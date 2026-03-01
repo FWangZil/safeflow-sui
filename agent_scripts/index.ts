@@ -13,19 +13,40 @@ dotenv.config();
 // Agent Key Management Example
 const KEY_FILE = path.join(__dirname, '.agent_key.json');
 
-function getOrGenerateAgentSecret(): Uint8Array | undefined {
+type AgentSecret = string | Uint8Array;
+
+function getOrGenerateAgentSecret(): AgentSecret | undefined {
     if (fs.existsSync(KEY_FILE)) {
-        const secretKey = JSON.parse(fs.readFileSync(KEY_FILE, 'utf-8')).secretKey;
+        const secretKey = JSON.parse(fs.readFileSync(KEY_FILE, 'utf-8')).secretKey as unknown;
         console.log('Loaded existing Agent Keypair from file');
-        return Uint8Array.from(secretKey);
+
+        if (typeof secretKey === 'string') {
+            return secretKey;
+        }
+
+        if (Array.isArray(secretKey)) {
+            if (secretKey.length === 0) {
+                return undefined;
+            }
+
+            if (typeof secretKey[0] === 'string') {
+                return secretKey.join('');
+            }
+
+            return Uint8Array.from(secretKey as number[]);
+        }
     }
+
     return undefined;
 }
 
 function saveAgentKey(keypair: Ed25519Keypair) {
     if (!fs.existsSync(KEY_FILE)) {
+        const secret = keypair.getSecretKey();
+        const secretKey = typeof secret === 'string' ? secret : Array.from(secret);
+
         fs.writeFileSync(KEY_FILE, JSON.stringify({
-            secretKey: Array.from(keypair.getSecretKey()),
+            secretKey,
             publicKey: keypair.getPublicKey().toBase64(),
             address: keypair.getPublicKey().toSuiAddress()
         }, null, 2));
@@ -35,15 +56,23 @@ function saveAgentKey(keypair: Ed25519Keypair) {
 
 // Just an entry point for testing/demonstration
 async function main() {
-    const PACKAGE_ID = process.env.PACKAGE_ID || '<YOUR_PACKAGE_ID>';
+    const PACKAGE_ID = process.env.PACKAGE_ID;
+    if (!PACKAGE_ID) {
+        throw new Error('Missing PACKAGE_ID. Please set PACKAGE_ID to your deployed package id.');
+    }
+
     const secretKey = getOrGenerateAgentSecret();
 
     // 1. Initialize the SDK Agent
-    const agent = new TickpayAgent({
+    const config: { network: 'testnet'; packageId: string; secretKey?: AgentSecret } = {
         network: 'testnet',
         packageId: PACKAGE_ID,
-        secretKey: secretKey
-    });
+    };
+    if (secretKey !== undefined) {
+        config.secretKey = secretKey;
+    }
+
+    const agent = new TickpayAgent(config);
 
     // Save key if it was newly generated
     saveAgentKey(agent.getKeypair());

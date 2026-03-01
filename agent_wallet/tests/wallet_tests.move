@@ -1,7 +1,7 @@
 #[test_only]
 module agent_wallet::wallet_tests {
     use sui::test_scenario::{Self};
-    use sui::coin::{Self, Coin};
+    use sui::coin::{Self};
     use sui::sui::SUI;
     use sui::clock::{Self};
     use std::string;

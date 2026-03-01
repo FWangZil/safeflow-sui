@@ -4,6 +4,51 @@ import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiC
 import { Transaction } from '@mysten/sui/transactions';
 import { useState } from 'react';
 
+const SUI_COIN_TYPE = '0x2::sui::SUI';
+const CLOCK_OBJECT_ID = '0x6';
+const DEFAULT_MAX_SPEND_PER_SECOND = 1_000_000;
+const DEFAULT_MAX_TOTAL_SPEND = 5_000_000_000;
+const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+function getDigestFromResult(result: unknown): string | null {
+    if (!isRecord(result)) {
+        return null;
+    }
+
+    const digest = result.digest;
+    return typeof digest === 'string' ? digest : null;
+}
+
+function extractIdFromEvents(events: Array<{ type: string; parsedJson: unknown }>, eventName: string, fieldName: string): string | null {
+    for (const event of events) {
+        if (!event.type.endsWith(`::wallet::${eventName}`)) {
+            continue;
+        }
+
+        if (!isRecord(event.parsedJson)) {
+            continue;
+        }
+
+        const value = event.parsedJson[fieldName];
+        if (typeof value === 'string') {
+            return value;
+        }
+    }
+
+    return null;
+}
+
 export default function Home() {
     const currentAccount = useCurrentAccount();
     const suiClient = useSuiClient();
@@ -11,6 +56,8 @@ export default function Home() {
 
     const [agentAddress, setAgentAddress] = useState('');
     const [status, setStatus] = useState('');
+    const [walletId, setWalletId] = useState('');
+    const [sessionCapId, setSessionCapId] = useState('');
 
     const handleCreateWalletAndCap = async () => {
         if (!currentAccount) {
@@ -23,18 +70,81 @@ export default function Home() {
             return;
         }
 
+        const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
+        if (!packageId) {
+            setStatus('Missing NEXT_PUBLIC_PACKAGE_ID. Please set it to your deployed package id.');
+            return;
+        }
+
         try {
-            setStatus('Creating Wallet and SessionCap...');
-            const tx = new Transaction();
+            setWalletId('');
+            setSessionCapId('');
 
-            // Note: In a real deployment, replace this with the actual package ID
-            const PACKAGE_ID = process.env.NEXT_PUBLIC_PACKAGE_ID || '0x_YOUR_PACKAGE_ID';
-            const SUI_COIN_TYPE = '0x2::sui::SUI';
+            setStatus('1/2 Creating wallet...');
+            const createWalletTx = new Transaction();
+            createWalletTx.moveCall({
+                target: `${packageId}::wallet::create_wallet`,
+                typeArguments: [SUI_COIN_TYPE],
+                arguments: [],
+            });
 
-            setStatus('For the demo, this is a placeholder UI for the human dashboard. See Move contract logic.');
+            const walletExecution = await signAndExecuteTransaction({
+                transaction: createWalletTx,
+            });
+            const walletDigest = getDigestFromResult(walletExecution);
+            if (!walletDigest) {
+                throw new Error('Wallet transaction completed but no digest returned.');
+            }
 
-        } catch (e: any) {
-            setStatus(`Error: ${e.message}`);
+            const walletTx = await suiClient.waitForTransaction({
+                digest: walletDigest,
+                options: { showEvents: true },
+            });
+            const walletEvents = walletTx.events ?? [];
+            const createdWalletId = extractIdFromEvents(walletEvents, 'WalletCreated', 'wallet_id');
+            if (!createdWalletId) {
+                throw new Error('Wallet created but wallet_id was not found in events.');
+            }
+            setWalletId(createdWalletId);
+
+            setStatus('2/2 Creating SessionCap...');
+            const expiresAtMs = Date.now() + DEFAULT_SESSION_TTL_MS;
+            const createCapTx = new Transaction();
+            createCapTx.moveCall({
+                target: `${packageId}::wallet::create_session_cap`,
+                typeArguments: [SUI_COIN_TYPE],
+                arguments: [
+                    createCapTx.object(createdWalletId),
+                    createCapTx.pure.address(agentAddress),
+                    createCapTx.pure.u64(DEFAULT_MAX_SPEND_PER_SECOND),
+                    createCapTx.pure.u64(DEFAULT_MAX_TOTAL_SPEND),
+                    createCapTx.pure.u64(expiresAtMs),
+                    createCapTx.object(CLOCK_OBJECT_ID),
+                ],
+            });
+
+            const capExecution = await signAndExecuteTransaction({
+                transaction: createCapTx,
+            });
+            const capDigest = getDigestFromResult(capExecution);
+            if (!capDigest) {
+                throw new Error('SessionCap transaction completed but no digest returned.');
+            }
+
+            const capTx = await suiClient.waitForTransaction({
+                digest: capDigest,
+                options: { showEvents: true },
+            });
+            const capEvents = capTx.events ?? [];
+            const createdSessionCapId = extractIdFromEvents(capEvents, 'SessionCapCreated', 'cap_id');
+            if (!createdSessionCapId) {
+                throw new Error('SessionCap created but cap_id was not found in events.');
+            }
+
+            setSessionCapId(createdSessionCapId);
+            setStatus(`Done. walletId=${createdWalletId}, sessionCapId=${createdSessionCapId}`);
+        } catch (e: unknown) {
+            setStatus(`Error: ${getErrorMessage(e)}`);
         }
     };
 
@@ -86,6 +196,16 @@ export default function Home() {
                     {status && (
                         <div className="mt-4 p-3 bg-zinc-100 rounded-md text-sm font-mono text-zinc-800">
                             {status}
+                        </div>
+                    )}
+                    {walletId && (
+                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all">
+                            walletId: {walletId}
+                        </div>
+                    )}
+                    {sessionCapId && (
+                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all">
+                            sessionCapId: {sessionCapId}
                         </div>
                     )}
                 </div>

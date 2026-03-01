@@ -2,7 +2,7 @@ import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 export interface TickpayAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
     packageId: string;
-    secretKey?: string;
+    secretKey?: string | Uint8Array | number[];
 }
 export interface SessionCapConfig {
     maxSpendPerSecond: number;

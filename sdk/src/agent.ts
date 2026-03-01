@@ -1,11 +1,12 @@
 import { getFullnodeUrl, SuiClient } from '@mysten/sui.js/client';
+import { decodeSuiPrivateKey } from '@mysten/sui.js/cryptography';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 
 export interface TickpayAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
     packageId: string;
-    secretKey?: string;
+    secretKey?: string | Uint8Array | number[];
 }
 
 export interface SessionCapConfig {
@@ -33,11 +34,8 @@ export class TickpayAgent {
 
         this.packageId = config.packageId;
 
-        if (config.secretKey) {
-            // Convert hex string to Uint8Array
-            const secretKeyBytes = new Uint8Array(
-                config.secretKey.match(/.{1,2}/g)?.map(byte => parseInt(byte, 16)) || []
-            );
+        if (config.secretKey !== undefined) {
+            const secretKeyBytes = normalizeSecretKey(config.secretKey);
             this.keypair = Ed25519Keypair.fromSecretKey(secretKeyBytes);
         } else {
             this.keypair = new Ed25519Keypair();
@@ -231,7 +229,6 @@ export async function autoSetupTickpay(
     network: 'testnet' | 'mainnet' | 'devnet' | 'localnet' = 'testnet',
     sessionConfig?: Partial<SessionCapConfig>
 ): Promise<SetupResult> {
-    // getSecretKey() returns a base64 string, convert to hex
     const secretKeyBytes = userKeypair.getSecretKey();
     const userAgent = new TickpayAgent({
         network,
@@ -265,4 +262,34 @@ export async function autoSetupTickpay(
         sessionCapId,
         agentAddress
     };
+}
+
+function normalizeSecretKey(secretKey: string | Uint8Array | number[]): Uint8Array {
+    if (secretKey instanceof Uint8Array) {
+        return secretKey;
+    }
+
+    if (Array.isArray(secretKey)) {
+        return Uint8Array.from(secretKey);
+    }
+
+    const raw = secretKey.trim();
+    if (raw.startsWith('suiprivkey')) {
+        return decodeSuiPrivateKey(raw).secretKey;
+    }
+
+    const withNoPrefix = raw.startsWith('0x') ? raw.slice(2) : raw;
+
+    // Accept hex-encoded secrets for compatibility with scripts and env vars.
+    if (withNoPrefix.length > 0 && withNoPrefix.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(withNoPrefix)) {
+        return Uint8Array.from(withNoPrefix.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
+    }
+
+    // Fallback to base64 for keypair.getSecretKey() style strings.
+    try {
+        const decoded = atob(raw);
+        return Uint8Array.from(decoded, (ch) => ch.charCodeAt(0));
+    } catch {
+        throw new Error('Unsupported secretKey format. Use Uint8Array, number[], hex string, or base64 string.');
+    }
 }
