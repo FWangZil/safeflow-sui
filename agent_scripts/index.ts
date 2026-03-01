@@ -1,109 +1,77 @@
-import { getFullnodeUrl, SuiClient } from '@mysten/sui.js/client';
-import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
-import { TransactionBlock } from '@mysten/sui.js/transactions';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { TickpayAgent, createTickpaySkill } from '@tickpay/sui-sdk';
+import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-// Agent Key Management
+// Agent Key Management Example
 const KEY_FILE = path.join(__dirname, '.agent_key.json');
 
-function getOrGenerateAgentKey(): Ed25519Keypair {
+function getOrGenerateAgentSecret(): Uint8Array | undefined {
     if (fs.existsSync(KEY_FILE)) {
         const secretKey = JSON.parse(fs.readFileSync(KEY_FILE, 'utf-8')).secretKey;
-        console.log('Loaded existing Agent Keypair');
-        return Ed25519Keypair.fromSecretKey(Uint8Array.from(secretKey));
-    } else {
-        const keypair = new Ed25519Keypair();
+        console.log('Loaded existing Agent Keypair from file');
+        return Uint8Array.from(secretKey);
+    }
+    return undefined;
+}
+
+function saveAgentKey(keypair: Ed25519Keypair) {
+    if (!fs.existsSync(KEY_FILE)) {
         fs.writeFileSync(KEY_FILE, JSON.stringify({
             secretKey: Array.from(keypair.getSecretKey()),
             publicKey: keypair.getPublicKey().toBase64(),
             address: keypair.getPublicKey().toSuiAddress()
         }, null, 2));
-        console.log(`Generated new Agent Keypair. Address: ${keypair.getPublicKey().toSuiAddress()}`);
-        return keypair;
-    }
-}
-
-// Client Setup
-const client = new SuiClient({ url: getFullnodeUrl('testnet') });
-const PACKAGE_ID = process.env.PACKAGE_ID || '<YOUR_PACKAGE_ID>';
-const SUI_COIN_TYPE = '0x2::sui::SUI';
-
-/**
- * Example OpenClaw Tool / Skill: Execute a Payment using the SessionCap
- */
-async function agentExecutePayment(
-    walletId: string,
-    sessionCapId: string,
-    recipient: string,
-    amount: number,
-    walrusBlobId: string
-) {
-    const keypair = getOrGenerateAgentKey();
-    console.log(`Agent Address executing payment: ${keypair.toSuiAddress()}`);
-
-    const txb = new TransactionBlock();
-
-    // Call the Move function
-    txb.moveCall({
-        target: `${PACKAGE_ID}::wallet::execute_payment`,
-        typeArguments: [SUI_COIN_TYPE],
-        arguments: [
-            txb.object(walletId),
-            txb.object(sessionCapId),
-            txb.pure(amount),
-            txb.pure(recipient),
-            txb.pure(walrusBlobId),
-            txb.object('0x6') // The system Clock object
-        ]
-    });
-
-    console.log('Executing transaction...');
-
-    try {
-        const result = await client.signAndExecuteTransactionBlock({
-            signer: keypair,
-            transactionBlock: txb,
-            options: {
-                showEffects: true,
-                showEvents: true
-            }
-        });
-        console.log('Transaction Successful!');
-        console.log(`Digest: ${result.digest}`);
-        if (result.events && result.events.length > 0) {
-            console.log('Events emitted:', JSON.stringify(result.events, null, 2));
-        }
-        return result;
-    } catch (e: any) {
-        console.error('Transaction Failed. This might be due to Rate Limit, Expiration, or Insufficient Balance.');
-        console.error(e.message);
-        throw e;
+        console.log(`Generated and saved new Agent Keypair. Address: ${keypair.getPublicKey().toSuiAddress()}`);
     }
 }
 
 // Just an entry point for testing/demonstration
 async function main() {
-    const keypair = getOrGenerateAgentKey();
-    console.log(`OpenClaw Agent Local Wallet Address: ${keypair.toSuiAddress()}`);
-    console.log(`Please ask the Human to create a SessionCap for this address via the Web UI.`);
-    console.log(`Once you have the walletId and sessionCapId, the agent can call 'agentExecutePayment'.`);
+    const PACKAGE_ID = process.env.PACKAGE_ID || '<YOUR_PACKAGE_ID>';
+    const secretKey = getOrGenerateAgentSecret();
 
-    // Uncomment and fill to test:
-    // await agentExecutePayment(
-    //     'WALLET_OBJECT_ID_HERE',
-    //     'SESSION_CAP_OBJECT_ID_HERE',
-    //     'RECIPIENT_ADDRESS_HERE',
-    //     1000000, // 0.001 SUI
-    //     'walrus_blob_reason_123'
-    // );
+    // 1. Initialize the SDK Agent
+    const agent = new TickpayAgent({
+        network: 'testnet',
+        packageId: PACKAGE_ID,
+        secretKey: secretKey
+    });
+
+    // Save key if it was newly generated
+    saveAgentKey(agent.getKeypair());
+
+    console.log(`\n🤖 OpenClaw Agent Local Wallet Address: ${agent.getAddress()}`);
+    console.log(`Please ask the Human to create a SessionCap for this address via the Web UI.`);
+    console.log(`Once you have the walletId and sessionCapId, the agent can call the skill.\n`);
+
+    // 2. Create the Skill tool definition
+    const tickpaySkill = createTickpaySkill(agent);
+
+    console.log('📦 Extracted Agent Skill Ready to be registered:');
+    console.log(JSON.stringify({
+        name: tickpaySkill.name,
+        description: tickpaySkill.description,
+        parameters: tickpaySkill.parameters
+    }, null, 2));
+
+    // Uncomment and fill to test executing via the skill:
+    // console.log('\nExecuting skill directly for test...');
+    // const result = await tickpaySkill.execute({
+    //     walletId: 'WALLET_OBJECT_ID_HERE',
+    //     sessionCapId: 'SESSION_CAP_OBJECT_ID_HERE',
+    //     recipient: 'RECIPIENT_ADDRESS_HERE',
+    //     amount: 1000000, // 0.001 SUI
+    //     walrusBlobId: 'walrus_blob_reason_123'
+    // });
+    // console.log(result);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

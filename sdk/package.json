@@ -1,0 +1,19 @@
+{
+  "name": "@tickpay/sui-sdk",
+  "version": "1.0.0",
+  "description": "SDK and Agent Skills for Tickpay on Sui",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.21.1",
+    "@mysten/sui.js": "^0.54.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
