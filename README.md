@@ -1,135 +1,137 @@
 # SafeFlow (Sui Edition) - Agent Air-Gap Wallet
 
-**基于 Sui 和 OpenClaw 的智能体专属“零花钱”与流支付协议**
+**A smart agent "pocket money" and streaming payment protocol based on Sui and OpenClaw**
 
-## 项目概述
+[中文版本 (Chinese Version)](./README_CN.md)
 
-SafeFlow (Sui Edition) 是一个专门为 **AI Agent (如 OpenClaw)** 设计的链上资金管理与流支付协议。在 Agent 变得越来越自治的今天，如何安全地给 Agent 授权资金，同时又防止由于 Prompt Injection 等攻击导致 Agent 恶意挥霍资金，成为了一个关键挑战（The Wallet Air-Gap）。
+## Project Overview
 
-本项目利用 Sui 独特的**对象模型 (Object Model)**，通过赋予 Agent 一个受限的 `SessionCap`（会话凭证），完美解决了这个挑战：
+SafeFlow (Sui Edition) is an on-chain fund management and streaming payment protocol specifically designed for **AI Agents (such as OpenClaw)**. In today's world where agents are becoming increasingly autonomous, a key challenge is how to securely authorize funds to an agent while preventing malicious overspending due to attacks like Prompt Injection (The Wallet Air-Gap).
 
-1. **资金隔离 (Air-Gap)**: 人类将资金存入 `AgentWallet` 共享对象，Agent 本地生成私钥，只持有 `SessionCap`。
-2. **严格的速率限制**: `SessionCap` 强制规定了 Agent 的“每秒最大花费”和“总花费上限”。即使 Agent 暴走，也无法瞬间抽干钱包。
-3. **结合 Walrus 的审计追踪**: Agent 脚本会先将推理证据上传到 Walrus（testnet）再执行支付；默认开启降级策略，上传失败时会用 `fallback:<sha256>` 标记继续支付，保证流程不中断且可追踪。
+This project leverages Sui's unique **Object Model** to solve this challenge by granting the agent a restricted `SessionCap` (session credential):
 
-## 核心功能与技术栈
+1. **Air-Gap Isolation**: Humans deposit funds into the `AgentWallet` shared object. The agent generates a private key locally and only holds the `SessionCap`.
+2. **Strict Rate Limiting**: The `SessionCap` enforces a "maximum spend per second" and a "total spending limit" for the agent. Even if the agent goes rogue, it cannot instantly drain the wallet.
+3. **Audit Trail with Walrus**: Agent scripts upload reasoning evidence to Walrus (testnet) before executing a payment. A degradation strategy is enabled by default; if the upload fails, it continues the payment with a `fallback:<sha256>` tag, ensuring the process is non-blocking and traceable.
 
-- **智能体安全隔离钱包**: Sui Move 实现的 `AgentWallet` 与 `SessionCap` 机制。
-- **精确到秒的流支付限制**: Move 合约内基于 Sui Clock 的时间戳流速计算 (`max_spend_per_second`)。
-- **可审计的支付意图 (Walrus Integration)**: 真实上传 Walrus 并记录 `walrus_blob_id` 到链上事件，前端可按交易 digest 查询。
-- **Agent 本地执行**: 基于 `@mysten/sui.js` 和 Node.js 的 TypeScript 脚本，模拟 OpenClaw Agent 本地静默运行并按需支付。
-- **人类控制面板 (Human Dashboard)**: 基于 Next.js + Tailwind CSS + Sui dApp Kit 构建的前端，用于管理资金和授权。
+## Core Features & Tech Stack
 
-| 组件 | 技术 |
+- **Agent Security Isolation Wallet**: `AgentWallet` and `SessionCap` mechanism implemented in Sui Move.
+- **Second-Level Precision Rate Limiting**: Flow rate calculation based on Sui Clock timestamps (`max_spend_per_second`) within the Move contract.
+- **Auditable Payment Intent (Walrus Integration)**: Real uploads to Walrus with `walrus_blob_id` recorded in on-chain events, queryable by transaction digest in the frontend.
+- **Local Agent Execution**: Node.js/TypeScript scripts based on `@mysten/sui.js`, simulating OpenClaw agent running silently and paying on demand.
+- **Human Dashboard**: A frontend built with Next.js + Tailwind CSS + Sui dApp Kit for managing funds and authorizations.
+
+| Component | Technology |
 |-----------|------------|
 | Blockchain | Sui (Testnet) |
 | Smart Contracts | Sui Move (2024.beta Edition) |
 | Agent Scripts | Node.js, TypeScript, `@mysten/sui.js` |
 | Frontend | Next.js 16, React, Tailwind CSS, `@mysten/dapp-kit` |
 
-## 目录结构
+## Directory Structure
 
 ```
 .
-├── agent_wallet/           # Sui Move 智能合约
+├── agent_wallet/           # Sui Move smart contracts
 │   ├── sources/
-│   │   └── wallet.move     # 核心钱包与授权逻辑
+│   │   └── wallet.move     # Core wallet and authorization logic
 │   ├── tests/
-│   │   └── wallet_tests.move # 单元测试
+│   │   └── wallet_tests.move # Unit tests
 │   └── Move.toml
-├── agent_scripts/          # OpenClaw Agent 本地执行脚本与工具
-│   ├── index.ts            # Agent 密钥管理与 PTB 支付执行逻辑
+├── agent_scripts/          # OpenClaw Agent local execution scripts & tools
+│   ├── index.ts            # Agent key management & PTB payment logic
 │   ├── package.json
 │   └── tsconfig.json
-├── web/                    # 供人类使用的主控制面板 (Next.js)
+├── web/                    # Main dashboard for humans (Next.js)
 │   ├── src/app/
 │   │   ├── page.tsx        # Dashboard UI
 │   │   ├── providers.tsx   # dApp Kit Providers
 │   │   └── layout.tsx
 │   ├── package.json
 │   └── tailwind.config.ts
-├── docs/                   # 项目相关文档
-│   ├── architecture.md     # 技术架构详解
-│   └── hackathon_intro.md  # 黑客松提交介绍
-└── README.md               # 本文件
+├── docs/                   # Project documentation
+│   ├── architecture.md     # Technical architecture details
+│   └── hackathon_intro.md  # Hackathon submission introduction
+└── README.md               # This file
 ```
 
-## 安装与运行步骤
+## Installation & Running
 
-### 1. 部署 Sui Move 合约
+### 1. Deploy Sui Move Contract
 
 ```bash
 cd agent_wallet
 
-# 构建合约
+# Build contract
 sui move build
 
-# 运行测试
+# Run tests
 sui move test
 
-# 发布到测试网 (请确保你的 sui client 环境已经配置好 testnet 并有测试币)
+# Publish to testnet (Ensure your sui client is configured for testnet with SUI tokens)
 sui client publish --gas-budget 100000000
 ```
 
-部署成功后，请记录下 `Package ID`。
+After successful deployment, please record the `Package ID`.
 
-### 2. 运行 Agent 脚本
+### 2. Run Agent Script
 
 ```bash
 cd agent_scripts
 
-# 安装依赖
-npm install
+# Install dependencies
+bun install
 
-# 指定刚部署得到的 Package ID（并配置 Walrus testnet）
+# Specify the Package ID from deployment (and configure Walrus testnet)
 export PACKAGE_ID=<YOUR_PACKAGE_ID>
 export WALRUS_PUBLISHER_URL=https://publisher.testnet.walrus.space
 export WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
 export WALRUS_EPOCHS=5
 export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
 
-# 运行 Agent 脚本 (它会自动生成/读取本地 Agent 私钥并打印地址)
+# Run Agent script (It will auto-generate/read local agent private key and print address)
 npx tsx index.ts
 ```
 
-记录下控制台打印出的 **Agent Address**。
+Record the **Agent Address** printed in the console.
 
-*(在实际应用中，让 Human Dashboard 给该地址授予 `SessionCap` 后，再在脚本里填入 `walletId/sessionCapId` 来执行真实支付。)*
+*(In actual use, have the Human Dashboard grant a `SessionCap` to this address, then fill in `walletId/sessionCapId` in the script to execute real payments.)*
 
-### 3. 运行 Human Dashboard (前端)
+### 3. Run Human Dashboard (Frontend)
 
 ```bash
 cd web
 
-# 安装依赖
-npm install
+# Install dependencies
+bun install
 
-# 指定刚部署得到的 Package ID，供前端调用 Move 合约
+# Specify the Package ID for the frontend to call Move contracts
 export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
 export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
 export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
 
-# 运行开发服务器
-npm run dev
+# Run development server
+bun run dev
 ```
 
-打开浏览器访问 `http://localhost:3000`。连接你的 Sui 钱包，输入上一步生成的 Agent Address，点击按钮即可链上执行：
+Open `http://localhost:3000` in your browser. Connect your Sui wallet, input the Agent Address from the previous step, and click the buttons for on-chain execution:
 
 1. `create_wallet`
 2. `create_session_cap`
 
-随后你可以在前端的 **Walrus Evidence Lookup** 区块输入支付交易 digest，直接解析并打开 `walrus_blob_id` 对应的证据链接。
+You can then enter a payment transaction digest in the **Walrus Evidence Lookup** section to resolve and open the evidence link corresponding to the `walrus_blob_id`.
 
-## 适用场景 (Track 匹配)
+## Use Cases (Track Matching)
 
-本项目极度契合 **Rebel in Paradise AI Hackathon** 的两大相关主题：
+This project fits perfectly with two themes of the **Sui OpenClaw Hackathon**:
 
 1. **Safety & Security (Track 1)**:
-   通过 Move 的 Object 能力和 Walrus 的去中心化存储，打造了一个**防注入、可追溯、防挤兑**的 Agent 隔离钱包。人类掌握绝对的资金控制权和审计权。
+   By leveraging Move's Object capabilities and Walrus's decentralized storage, we've built an **injection-proof, traceable, and run-proof** agent isolation wallet. Humans maintain absolute control and auditing rights over funds.
 
 2. **Local God Mode (Track 2)**:
-   OpenClaw 智能体在本地机器上运行，利用分配到的 `SessionCap` 在后台无缝地为自己调用的云端大模型 API 或其他 Web3 服务进行流式付费，实现真正的 Local Autonomy (本地自治)。
+   The OpenClaw agent runs locally and uses its assigned `SessionCap` to seamlessly pay for cloud LLM APIs or other Web3 services in the background, achieving true Local Autonomy.
 
-## 许可证
+## License
 
 MIT License
