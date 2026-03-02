@@ -1,16 +1,16 @@
 /**
- * Creates an OpenClaw compatible tool for executing Tickpay payments
+ * Creates an OpenClaw compatible tool for executing SafeFlow payments
  */
-export function createTickpaySkill(agent) {
+export function createSafeFlowSkill(agent) {
     return {
-        name: 'execute_tickpay_payment',
-        description: 'Executes a streaming payment or recurring payment using a predefined Tickpay SessionCap on the Sui network. Use this when the user asks to pay someone or transfer funds automatically via their authorized session.',
+        name: 'execute_safeflow_payment',
+        description: 'Executes a streaming payment or recurring payment using a predefined SafeFlow SessionCap on the Sui network. Use this when the user asks to pay someone or transfer funds automatically via their authorized session.',
         parameters: {
             type: 'object',
             properties: {
                 walletId: {
                     type: 'string',
-                    description: 'The Object ID of the Tickpay Wallet'
+                    description: 'The Object ID of the SafeFlow Wallet'
                 },
                 sessionCapId: {
                     type: 'string',
@@ -32,7 +32,7 @@ export function createTickpaySkill(agent) {
             required: ['walletId', 'sessionCapId', 'recipient', 'amount']
         },
         execute: async (args) => {
-            console.log(`[Tickpay Skill] Executing payment of ${args.amount} MIST to ${args.recipient}...`);
+            console.log(`[SafeFlow Skill] Executing payment of ${args.amount} MIST to ${args.recipient}...`);
             try {
                 const result = await agent.executePayment(args.walletId, args.sessionCapId, args.recipient, args.amount, args.walrusBlobId || '');
                 return {

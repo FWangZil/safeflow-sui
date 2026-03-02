@@ -1,6 +1,6 @@
-# 技术架构详解 (TickPay Sui Edition)
+# 技术架构详解 (SafeFlow Sui Edition)
 
-本架构文档旨在说明 TickPay 是如何利用 Sui 区块链的特性（特别是 Object Model）结合 OpenClaw 实现 Agent-native Payments 的。
+本架构文档旨在说明 SafeFlow 是如何利用 Sui 区块链的特性（特别是 Object Model）结合 OpenClaw 实现 Agent-native Payments 的。
 
 ## 整体架构图
 

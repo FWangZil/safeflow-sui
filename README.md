@@ -1,10 +1,10 @@
-# TickPay (Sui Edition) - Agent Air-Gap Wallet
+# SafeFlow (Sui Edition) - Agent Air-Gap Wallet
 
 **基于 Sui 和 OpenClaw 的智能体专属“零花钱”与流支付协议**
 
 ## 项目概述
 
-TickPay (Sui Edition) 是一个专门为 **AI Agent (如 OpenClaw)** 设计的链上资金管理与流支付协议。在 Agent 变得越来越自治的今天，如何安全地给 Agent 授权资金，同时又防止由于 Prompt Injection 等攻击导致 Agent 恶意挥霍资金，成为了一个关键挑战（The Wallet Air-Gap）。
+SafeFlow (Sui Edition) 是一个专门为 **AI Agent (如 OpenClaw)** 设计的链上资金管理与流支付协议。在 Agent 变得越来越自治的今天，如何安全地给 Agent 授权资金，同时又防止由于 Prompt Injection 等攻击导致 Agent 恶意挥霍资金，成为了一个关键挑战（The Wallet Air-Gap）。
 
 本项目利用 Sui 独特的**对象模型 (Object Model)**，通过赋予 Agent 一个受限的 `SessionCap`（会话凭证），完美解决了这个挑战：
 

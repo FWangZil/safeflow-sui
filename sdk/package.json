@@ -1,7 +1,7 @@
 {
-  "name": "@tickpay/sui-sdk",
+  "name": "@safeflow/sui-sdk",
   "version": "1.0.0",
-  "description": "SDK and Agent Skills for Tickpay on Sui",
+  "description": "SDK and Agent Skills for SafeFlow on Sui",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",

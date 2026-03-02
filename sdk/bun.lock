@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@tickpay/sui-sdk",
+      "name": "@safeflow/sui-sdk",
       "dependencies": {
         "@mysten/sui": "^1.21.1",
         "@mysten/sui.js": "^0.54.1",

@@ -2,7 +2,7 @@ import { getFullnodeUrl, SuiClient } from '@mysten/sui.js/client';
 import { decodeSuiPrivateKey } from '@mysten/sui.js/cryptography';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
-export class TickpayAgent {
+export class SafeFlowAgent {
     client;
     keypair;
     packageId;
@@ -33,7 +33,7 @@ export class TickpayAgent {
         return this.keypair;
     }
     /**
-     * Create a new Tickpay Wallet
+     * Create a new SafeFlow Wallet
      * Returns the wallet object ID
      */
     async createWallet() {
@@ -131,7 +131,7 @@ export class TickpayAgent {
             return result;
         }
         catch (e) {
-            throw new Error(`Tickpay execution failed: ${e.message}`);
+            throw new Error(`SafeFlow execution failed: ${e.message}`);
         }
     }
     /**
@@ -164,19 +164,19 @@ export class TickpayAgent {
     }
 }
 /**
- * Auto-setup Tickpay for a user
+ * Auto-setup SafeFlow for a user
  * This handles the complete flow: create wallet -> create session cap for agent
  * Note: This requires the user to have SUI for gas fees
  */
-export async function autoSetupTickpay(userKeypair, agentAddress, packageId, network = 'testnet', sessionConfig) {
+export async function autoSetupSafeFlow(userKeypair, agentAddress, packageId, network = 'testnet', sessionConfig) {
     const secretKeyBytes = userKeypair.getSecretKey();
-    const userAgent = new TickpayAgent({
+    const userAgent = new SafeFlowAgent({
         network,
         packageId,
         secretKey: secretKeyBytes
     });
     // Create wallet
-    console.log('[Setup] Creating Tickpay Wallet...');
+    console.log('[Setup] Creating SafeFlow Wallet...');
     const walletId = await userAgent.createWallet();
     console.log(`[Setup] Wallet created: ${walletId}`);
     // Default session config: 1000 SUI per second, 10000 total, 30 days expiry

@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { TickpayAgent, createTickpaySkill } from '@tickpay/sui-sdk';
+import { SafeFlowAgent, createSafeFlowSkill } from '@safeflow/sui-sdk';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -72,7 +72,7 @@ async function main() {
         config.secretKey = secretKey;
     }
 
-    const agent = new TickpayAgent(config);
+    const agent = new SafeFlowAgent(config);
 
     // Save key if it was newly generated
     saveAgentKey(agent.getKeypair());
@@ -82,18 +82,18 @@ async function main() {
     console.log(`Once you have the walletId and sessionCapId, the agent can call the skill.\n`);
 
     // 2. Create the Skill tool definition
-    const tickpaySkill = createTickpaySkill(agent);
+    const safeFlowSkill = createSafeFlowSkill(agent);
 
     console.log('📦 Extracted Agent Skill Ready to be registered:');
     console.log(JSON.stringify({
-        name: tickpaySkill.name,
-        description: tickpaySkill.description,
-        parameters: tickpaySkill.parameters
+        name: safeFlowSkill.name,
+        description: safeFlowSkill.description,
+        parameters: safeFlowSkill.parameters
     }, null, 2));
 
     // Uncomment and fill to test executing via the skill:
     // console.log('\nExecuting skill directly for test...');
-    // const result = await tickpaySkill.execute({
+    // const result = await safeFlowSkill.execute({
     //     walletId: 'WALLET_OBJECT_ID_HERE',
     //     sessionCapId: 'SESSION_CAP_OBJECT_ID_HERE',
     //     recipient: 'RECIPIENT_ADDRESS_HERE',

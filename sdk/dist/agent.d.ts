@@ -1,5 +1,5 @@
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
-export interface TickpayAgentConfig {
+export interface SafeFlowAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
     packageId: string;
     secretKey?: string | Uint8Array | number[];
@@ -14,12 +14,12 @@ export interface SetupResult {
     sessionCapId: string;
     agentAddress: string;
 }
-export declare class TickpayAgent {
+export declare class SafeFlowAgent {
     private client;
     private keypair;
     private packageId;
     private suiCoinType;
-    constructor(config: TickpayAgentConfig);
+    constructor(config: SafeFlowAgentConfig);
     /**
      * Get the agent's Sui address
      */
@@ -29,7 +29,7 @@ export declare class TickpayAgent {
      */
     getKeypair(): Ed25519Keypair;
     /**
-     * Create a new Tickpay Wallet
+     * Create a new SafeFlow Wallet
      * Returns the wallet object ID
      */
     createWallet(): Promise<string>;
@@ -53,8 +53,8 @@ export declare class TickpayAgent {
     getBalance(): Promise<bigint>;
 }
 /**
- * Auto-setup Tickpay for a user
+ * Auto-setup SafeFlow for a user
  * This handles the complete flow: create wallet -> create session cap for agent
  * Note: This requires the user to have SUI for gas fees
  */
-export declare function autoSetupTickpay(userKeypair: Ed25519Keypair, agentAddress: string, packageId: string, network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet', sessionConfig?: Partial<SessionCapConfig>): Promise<SetupResult>;
+export declare function autoSetupSafeFlow(userKeypair: Ed25519Keypair, agentAddress: string, packageId: string, network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet', sessionConfig?: Partial<SessionCapConfig>): Promise<SetupResult>;

@@ -3,7 +3,7 @@ import { decodeSuiPrivateKey } from '@mysten/sui.js/cryptography';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 
-export interface TickpayAgentConfig {
+export interface SafeFlowAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
     packageId: string;
     secretKey?: string | Uint8Array | number[];
@@ -21,13 +21,13 @@ export interface SetupResult {
     agentAddress: string;
 }
 
-export class TickpayAgent {
+export class SafeFlowAgent {
     private client: SuiClient;
     private keypair: Ed25519Keypair;
     private packageId: string;
     private suiCoinType = '0x2::sui::SUI';
 
-    constructor(config: TickpayAgentConfig) {
+    constructor(config: SafeFlowAgentConfig) {
         this.client = new SuiClient({
             url: getFullnodeUrl(config.network || 'testnet')
         });
@@ -57,7 +57,7 @@ export class TickpayAgent {
     }
 
     /**
-     * Create a new Tickpay Wallet
+     * Create a new SafeFlow Wallet
      * Returns the wallet object ID
      */
     public async createWallet(): Promise<string> {
@@ -180,7 +180,7 @@ export class TickpayAgent {
             });
             return result;
         } catch (e: any) {
-            throw new Error(`Tickpay execution failed: ${e.message}`);
+            throw new Error(`SafeFlow execution failed: ${e.message}`);
         }
     }
 
@@ -218,11 +218,11 @@ export class TickpayAgent {
 }
 
 /**
- * Auto-setup Tickpay for a user
+ * Auto-setup SafeFlow for a user
  * This handles the complete flow: create wallet -> create session cap for agent
  * Note: This requires the user to have SUI for gas fees
  */
-export async function autoSetupTickpay(
+export async function autoSetupSafeFlow(
     userKeypair: Ed25519Keypair,
     agentAddress: string,
     packageId: string,
@@ -230,14 +230,14 @@ export async function autoSetupTickpay(
     sessionConfig?: Partial<SessionCapConfig>
 ): Promise<SetupResult> {
     const secretKeyBytes = userKeypair.getSecretKey();
-    const userAgent = new TickpayAgent({
+    const userAgent = new SafeFlowAgent({
         network,
         packageId,
         secretKey: secretKeyBytes
     });
 
     // Create wallet
-    console.log('[Setup] Creating Tickpay Wallet...');
+    console.log('[Setup] Creating SafeFlow Wallet...');
     const walletId = await userAgent.createWallet();
     console.log(`[Setup] Wallet created: ${walletId}`);
 

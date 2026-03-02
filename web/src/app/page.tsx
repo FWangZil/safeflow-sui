@@ -2,6 +2,7 @@
 
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
+import Image from 'next/image';
 import { useState } from 'react';
 
 const SUI_COIN_TYPE = '0x2::sui::SUI';
@@ -152,7 +153,17 @@ export default function Home() {
         <main className="flex min-h-screen flex-col items-center p-24 bg-zinc-50">
             <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
                 <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm mb-8">
-                    <h1 className="text-2xl font-bold text-zinc-800">TickPay <span className="text-blue-500">Agent Air-Gap</span></h1>
+                    <div className="flex items-center gap-3">
+                        <Image
+                            src="/safeflow-logo-128.png"
+                            alt="SafeFlow logo"
+                            width={36}
+                            height={36}
+                            className="h-9 w-9 rounded-md object-cover"
+                            priority
+                        />
+                        <h1 className="text-2xl font-bold text-zinc-800">SafeFlow <span className="text-blue-500">Agent Air-Gap</span></h1>
+                    </div>
                     <ConnectButton />
                 </div>
 

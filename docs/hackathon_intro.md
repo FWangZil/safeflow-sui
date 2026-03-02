@@ -1,4 +1,4 @@
-# TickPay (Sui Edition) - Rebel in Paradise Hackathon Intro
+# SafeFlow (Sui Edition) - Rebel in Paradise Hackathon Intro
 
 ## 1. 项目一句话简介
 基于 Sui Object Model 的**防注入、可追溯** AI 智能体 (OpenClaw) 流支付“零花钱”物理隔离钱包。

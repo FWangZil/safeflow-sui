@@ -1,4 +1,4 @@
-import { TickpayAgent } from './agent.js';
+import { SafeFlowAgent } from './agent.js';
 /**
  * Interface for an OpenClaw or generic agent tool
  */
@@ -13,6 +13,6 @@ export interface AgentTool {
     execute: (args: any) => Promise<any>;
 }
 /**
- * Creates an OpenClaw compatible tool for executing Tickpay payments
+ * Creates an OpenClaw compatible tool for executing SafeFlow payments
  */
-export declare function createTickpaySkill(agent: TickpayAgent): AgentTool;
+export declare function createSafeFlowSkill(agent: SafeFlowAgent): AgentTool;
