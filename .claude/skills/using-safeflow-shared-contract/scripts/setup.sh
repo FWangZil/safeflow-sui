@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Tickpay Setup Script
-# Sets up a Tickpay wallet and session cap using the official shared contract.
+# SafeFlow Setup Script
+# Sets up a SafeFlow wallet and session cap using the official shared contract.
 #
 # Prerequisites:
 #   - sui CLI installed and configured (https://docs.sui.io/references/cli)
@@ -17,14 +17,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/.tickpay-config.json"
+CONFIG_FILE="$SCRIPT_DIR/.safeflow-config.json"
 AGENT_ADDRESS_FILE="$SCRIPT_DIR/.agent-address.txt"
 
 # =============================================================================
 # TODO: Fill in after deployment
 # =============================================================================
-TICKPAY_PACKAGE_ID="0xTODO_FILL_AFTER_DEPLOYMENT"
-TICKPAY_NETWORK="testnet"
+SAFEFLOW_PACKAGE_ID="0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191"
+SAFEFLOW_NETWORK="testnet"
 # =============================================================================
 
 SUI_COIN_TYPE="0x2::sui::SUI"
@@ -39,9 +39,9 @@ error()   { echo -e "${RED}[Setup]${NC} $*" >&2; }
 
 # --------------- Guard checks ---------------
 
-if [[ "$TICKPAY_PACKAGE_ID" == *"TODO"* ]]; then
-    error "Tickpay Package ID is not configured yet."
-    error "Edit setup.sh and fill in TICKPAY_PACKAGE_ID."
+if [[ "$SAFEFLOW_PACKAGE_ID" == *"TODO"* ]]; then
+    error "SafeFlow Package ID is not configured yet."
+    error "Edit setup.sh and fill in SAFEFLOW_PACKAGE_ID."
     exit 1
 fi
 
@@ -65,7 +65,7 @@ done
 # --------------- Show existing config ---------------
 
 if [[ -f "$CONFIG_FILE" ]] && [[ "$FORCE" == false ]]; then
-    info "Tickpay is already configured. Use --force to reconfigure."
+    info "SafeFlow is already configured. Use --force to reconfigure."
     echo ""
     cat "$CONFIG_FILE" | jq .
     exit 0
@@ -73,8 +73,8 @@ fi
 
 # --------------- Switch network ---------------
 
-info "Switching to $TICKPAY_NETWORK..."
-sui client switch --env "$TICKPAY_NETWORK" 2>/dev/null || true
+info "Switching to $SAFEFLOW_NETWORK..."
+sui client switch --env "$SAFEFLOW_NETWORK" 2>/dev/null || true
 
 # --------------- Get active address ---------------
 
@@ -96,7 +96,7 @@ info "Current balance: $(echo "scale=4; $BALANCE_RAW / 1000000000" | bc) SUI ($B
 MIN_BALANCE=500000000  # 0.5 SUI
 
 if [[ "$BALANCE_RAW" -lt "$MIN_BALANCE" ]]; then
-    if [[ "$TICKPAY_NETWORK" == "testnet" ]]; then
+    if [[ "$SAFEFLOW_NETWORK" == "testnet" ]]; then
         info "Balance low, requesting from faucet..."
         sui client faucet --address "$USER_ADDRESS" || {
             warn "Faucet command failed. Trying HTTP faucet..."
@@ -139,11 +139,11 @@ else
     info "Agent key saved to keystore by sui CLI."
 fi
 
-# --------------- Create Tickpay Wallet ---------------
+# --------------- Create SafeFlow Wallet ---------------
 
-info "Step 4: Creating Tickpay Wallet..."
+info "Step 4: Creating SafeFlow Wallet..."
 WALLET_OUTPUT=$(sui client call \
-    --package "$TICKPAY_PACKAGE_ID" \
+    --package "$SAFEFLOW_PACKAGE_ID" \
     --module wallet \
     --function create_wallet \
     --type-args "$SUI_COIN_TYPE" \
@@ -173,7 +173,7 @@ MAX_SPEND_PER_SEC=1000000000   # 1 SUI/sec
 MAX_SPEND_TOTAL=10000000000    # 10 SUI total
 
 SESSION_OUTPUT=$(sui client call \
-    --package "$TICKPAY_PACKAGE_ID" \
+    --package "$SAFEFLOW_PACKAGE_ID" \
     --module wallet \
     --function create_session_cap \
     --type-args "$SUI_COIN_TYPE" \
@@ -198,25 +198,25 @@ fi
 
 cat > "$CONFIG_FILE" <<EOF
 {
-  "packageId": "$TICKPAY_PACKAGE_ID",
+  "packageId": "$SAFEFLOW_PACKAGE_ID",
   "walletId": "$WALLET_ID",
   "sessionCapId": "$SESSION_CAP_ID",
   "agentAddress": "$AGENT_ADDRESS",
   "userAddress": "$USER_ADDRESS",
-  "network": "$TICKPAY_NETWORK"
+  "network": "$SAFEFLOW_NETWORK"
 }
 EOF
 
 echo ""
 success "Setup complete!"
 echo ""
-echo "  Package ID:    $TICKPAY_PACKAGE_ID"
+echo "  Package ID:    $SAFEFLOW_PACKAGE_ID"
 echo "  Wallet ID:     $WALLET_ID"
 echo "  SessionCap ID: $SESSION_CAP_ID"
 echo "  Agent Address: $AGENT_ADDRESS"
 echo "  User Address:  $USER_ADDRESS"
 echo ""
-info "Next: deposit SUI into your Tickpay wallet to fund payments:"
+info "Next: deposit SUI into your SafeFlow wallet to fund payments:"
 echo "  sui client transfer-sui --to $WALLET_ID --amount 1000000000 --gas-budget 10000000"
 echo ""
 info "Then make payments with:"

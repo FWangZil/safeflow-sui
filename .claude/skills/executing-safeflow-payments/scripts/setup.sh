@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Tickpay Setup Script
-# Sets up a Tickpay wallet and session cap using your own deployed contract.
+# SafeFlow Setup Script
+# Sets up a SafeFlow wallet and session cap using your own deployed contract.
 #
 # Prerequisites:
 #   - sui CLI installed and configured (https://docs.sui.io/references/cli)
 #   - jq installed (brew install jq / apt-get install jq)
 #   - Active Sui address with gas funds
-#   - Deployed Tickpay package ID
+#   - Deployed SafeFlow package ID
 #
 # Usage:
 #   ./setup.sh --package-id <PACKAGE_ID> [--force]
 #
 # Options:
-#   --package-id  The deployed Tickpay contract Package ID (required)
+#   --package-id  The deployed SafeFlow contract Package ID (required)
 #   --force       Recreate wallet and session cap even if config already exists
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/.tickpay-config.json"
+CONFIG_FILE="$SCRIPT_DIR/.safeflow-config.json"
 AGENT_ADDRESS_FILE="$SCRIPT_DIR/.agent-address.txt"
 
 SUI_COIN_TYPE="0x2::sui::SUI"
@@ -35,12 +35,12 @@ error()   { echo -e "${RED}[Setup]${NC} $*" >&2; }
 
 # --------------- Parse arguments ---------------
 
-TICKPAY_PACKAGE_ID=""
+SAFEFLOW_PACKAGE_ID=""
 FORCE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --package-id) TICKPAY_PACKAGE_ID="$2"; shift 2 ;;
+        --package-id) SAFEFLOW_PACKAGE_ID="$2"; shift 2 ;;
         --force)      FORCE=true; shift ;;
         *) error "Unknown argument: $1"; exit 1 ;;
     esac
@@ -48,11 +48,11 @@ done
 
 # --------------- Guard checks ---------------
 
-if [[ -z "$TICKPAY_PACKAGE_ID" ]]; then
+if [[ -z "$SAFEFLOW_PACKAGE_ID" ]]; then
     error "Package ID is required."
     echo "Usage: ./setup.sh --package-id <PACKAGE_ID>"
     echo ""
-    echo "To deploy the Tickpay contract:"
+    echo "To deploy the SafeFlow contract:"
     echo "  cd sui/agent_wallet && sui client publish --gas-budget 100000000"
     exit 1
 fi
@@ -72,7 +72,7 @@ fi
 # --------------- Show existing config ---------------
 
 if [[ -f "$CONFIG_FILE" ]] && [[ "$FORCE" == false ]]; then
-    info "Tickpay is already configured. Use --force to reconfigure."
+    info "SafeFlow is already configured. Use --force to reconfigure."
     echo ""
     cat "$CONFIG_FILE" | jq .
     exit 0
@@ -80,8 +80,8 @@ fi
 
 # --------------- Detect network ---------------
 
-TICKPAY_NETWORK=$(sui client active-env 2>/dev/null | tr -d '[:space:]' || echo "testnet")
-info "Network: $TICKPAY_NETWORK"
+SAFEFLOW_NETWORK=$(sui client active-env 2>/dev/null | tr -d '[:space:]' || echo "testnet")
+info "Network: $SAFEFLOW_NETWORK"
 
 # --------------- Get active address ---------------
 
@@ -103,7 +103,7 @@ info "Current balance: $(echo "scale=4; $BALANCE_RAW / 1000000000" | bc) SUI ($B
 MIN_BALANCE=500000000  # 0.5 SUI
 
 if [[ "$BALANCE_RAW" -lt "$MIN_BALANCE" ]]; then
-    if [[ "$TICKPAY_NETWORK" == "testnet" ]]; then
+    if [[ "$SAFEFLOW_NETWORK" == "testnet" ]]; then
         info "Balance low, requesting from faucet..."
         sui client faucet --address "$USER_ADDRESS" || {
             warn "Faucet command failed. Trying HTTP faucet..."
@@ -144,11 +144,11 @@ else
     info "Created new agent address: $AGENT_ADDRESS"
 fi
 
-# --------------- Create Tickpay Wallet ---------------
+# --------------- Create SafeFlow Wallet ---------------
 
-info "Step 4: Creating Tickpay Wallet..."
+info "Step 4: Creating SafeFlow Wallet..."
 WALLET_OUTPUT=$(sui client call \
-    --package "$TICKPAY_PACKAGE_ID" \
+    --package "$SAFEFLOW_PACKAGE_ID" \
     --module wallet \
     --function create_wallet \
     --type-args "$SUI_COIN_TYPE" \
@@ -177,7 +177,7 @@ MAX_SPEND_PER_SEC=1000000000   # 1 SUI/sec
 MAX_SPEND_TOTAL=10000000000    # 10 SUI total
 
 SESSION_OUTPUT=$(sui client call \
-    --package "$TICKPAY_PACKAGE_ID" \
+    --package "$SAFEFLOW_PACKAGE_ID" \
     --module wallet \
     --function create_session_cap \
     --type-args "$SUI_COIN_TYPE" \
@@ -202,19 +202,19 @@ fi
 
 cat > "$CONFIG_FILE" <<EOF
 {
-  "packageId": "$TICKPAY_PACKAGE_ID",
+  "packageId": "$SAFEFLOW_PACKAGE_ID",
   "walletId": "$WALLET_ID",
   "sessionCapId": "$SESSION_CAP_ID",
   "agentAddress": "$AGENT_ADDRESS",
   "userAddress": "$USER_ADDRESS",
-  "network": "$TICKPAY_NETWORK"
+  "network": "$SAFEFLOW_NETWORK"
 }
 EOF
 
 echo ""
 success "Setup complete!"
 echo ""
-echo "  Package ID:    $TICKPAY_PACKAGE_ID"
+echo "  Package ID:    $SAFEFLOW_PACKAGE_ID"
 echo "  Wallet ID:     $WALLET_ID"
 echo "  SessionCap ID: $SESSION_CAP_ID"
 echo "  Agent Address: $AGENT_ADDRESS"

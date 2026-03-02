@@ -1,33 +1,34 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Tickpay Execute Payment Script
-# Executes a streaming payment using the Tickpay shared contract.
+# SafeFlow Execute Payment Script
+# Executes a streaming payment using your deployed SafeFlow contract.
 #
 # Prerequisites:
 #   - sui CLI installed and configured (https://docs.sui.io/references/cli)
+#   - jq installed (brew install jq / apt-get install jq)
 #   - Run ./setup.sh first to create wallet and session cap
 #
 # Usage:
 #   ./execute_payment.sh --recipient <SUI_ADDRESS> --amount <MIST>
 #
 # Parameters:
-#   --recipient   Destination Sui address
-#   --amount      Amount in MIST (1 SUI = 1,000,000,000 MIST)
+#   --recipient   Destination Sui address (required)
+#   --amount      Amount in MIST (1 SUI = 1,000,000,000 MIST) (required)
 #   --blob-id     Optional Walrus blob ID for audit trail (default: empty)
 # =============================================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/.tickpay-config.json"
+CONFIG_FILE="$SCRIPT_DIR/.safeflow-config.json"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-info()    { echo -e "${BLUE}[Tickpay]${NC} $*"; }
-success() { echo -e "${GREEN}[Tickpay]${NC} $*"; }
-warn()    { echo -e "${YELLOW}[Tickpay]${NC} $*"; }
-error()   { echo -e "${RED}[Tickpay]${NC} $*" >&2; }
+info()    { echo -e "${BLUE}[SafeFlow]${NC} $*"; }
+success() { echo -e "${GREEN}[SafeFlow]${NC} $*"; }
+warn()    { echo -e "${YELLOW}[SafeFlow]${NC} $*"; }
+error()   { echo -e "${RED}[SafeFlow]${NC} $*" >&2; }
 
 # --------------- Parse arguments ---------------
 
@@ -48,11 +49,10 @@ if [[ -z "$RECIPIENT" || -z "$AMOUNT" ]]; then
     error "Missing required arguments."
     echo "Usage: ./execute_payment.sh --recipient <SUI_ADDRESS> --amount <MIST>"
     echo ""
-    echo "Run ./setup.sh first if not yet configured."
+    echo "Run ./setup.sh --package-id <PACKAGE_ID> first if not yet configured."
     exit 1
 fi
 
-# Validate amount is a positive integer
 if ! [[ "$AMOUNT" =~ ^[1-9][0-9]*$ ]]; then
     error "Invalid amount '$AMOUNT'. Must be a positive integer in MIST."
     echo "  1 SUI = 1,000,000,000 MIST"
@@ -74,8 +74,8 @@ if ! command -v jq &>/dev/null; then
 fi
 
 if [[ ! -f "$CONFIG_FILE" ]]; then
-    error "Tickpay not configured. Config not found: $CONFIG_FILE"
-    error "Run ./setup.sh first."
+    error "SafeFlow not configured. Config not found: $CONFIG_FILE"
+    error "Run: ./setup.sh --package-id <PACKAGE_ID>"
     exit 1
 fi
 
@@ -97,7 +97,7 @@ info "Paying $(echo "scale=4; $AMOUNT / 1000000000" | bc) SUI ($AMOUNT MIST) to 
 sui client switch --address "$AGENT_ADDRESS" 2>/dev/null || {
     error "Failed to switch to agent address: $AGENT_ADDRESS"
     error "The agent address must be in your sui keystore."
-    error "Re-run ./setup.sh --force to regenerate."
+    error "Re-run: ./setup.sh --package-id $PACKAGE_ID --force"
     exit 1
 }
 
@@ -120,21 +120,18 @@ if echo "$RESULT" | jq -e '.effects.status.status == "success"' &>/dev/null; the
     echo "  Explorer: https://suiscan.xyz/$NETWORK/tx/$DIGEST"
 else
     error "Payment failed."
-    STATUS=$(echo "$RESULT" | jq -r '.effects.status // empty' 2>/dev/null || echo "")
 
-    # Provide actionable hints based on error patterns
     if echo "$RESULT" | grep -qi "insufficient\|balance\|coin"; then
-        error "Hint: The Tickpay wallet has insufficient SUI balance."
+        error "Hint: The SafeFlow wallet has insufficient SUI balance."
         error "  Fund the wallet: sui client transfer-sui --to $WALLET_ID --amount 1000000000 --gas-budget 10000000"
     elif echo "$RESULT" | grep -qi "ENotOwner\|unauthorized\|permission\|session"; then
         error "Hint: Agent is not authorized or SessionCap has expired."
-        error "  Re-run: ./setup.sh --force"
+        error "  Re-run: ./setup.sh --package-id $PACKAGE_ID --force"
     elif echo "$RESULT" | grep -qi "not found\|deleted\|object"; then
         error "Hint: Wallet or SessionCap object not found. It may have been deleted."
-        error "  Re-run: ./setup.sh --force"
+        error "  Re-run: ./setup.sh --package-id $PACKAGE_ID --force"
     elif echo "$RESULT" | grep -qi "gas\|budget"; then
-        error "Hint: Insufficient gas. The agent address needs SUI for gas fees."
-        CURRENT_ADDR=$(sui client active-address 2>/dev/null || echo "unknown")
+        error "Hint: Agent address needs SUI for gas fees."
         error "  Fund the agent: sui client transfer-sui --to $AGENT_ADDRESS --amount 500000000 --gas-budget 10000000"
     fi
 

@@ -1,11 +1,11 @@
 ---
-name: executing-tickpay-payments
-description: Deploys a Tickpay contract and executes streaming payments on Sui. Use when the user wants to deploy their own Tickpay contract, setup their own wallet, or make payments via their own deployment.
+name: executing-safeflow-payments
+description: Deploys a SafeFlow contract and executes streaming payments on Sui. Use when the user wants to deploy their own SafeFlow contract, set up their own wallet, or make payments via their own deployment.
 ---
 
-# Executing Tickpay Payments (Self-Deployed Contract)
+# Executing SafeFlow Payments (Self-Deployed Contract)
 
-This skill deploys your own Tickpay contract and sets up streaming payments on Sui. Use this if you want full control over the contract. For the official shared contract, use the `using-tickpay-shared-contract` skill instead.
+This skill deploys your own SafeFlow contract and sets up streaming payments on Sui. Use this if you want full control over the contract. For the official shared contract, use the `using-safeflow-shared-contract` skill instead.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ Install the following tools before running any scripts:
 
 ## Step 1: Deploy the Contract
 
-If you haven't deployed the Tickpay contract yet:
+If you haven't deployed the SafeFlow contract yet:
 
 ```bash
 cd sui/agent_wallet
@@ -46,7 +46,7 @@ Note the **Package ID** from the output (looks like `0x1234...abcd`).
 ## Step 2: One-Time Setup
 
 ```bash
-cd .claude/skills/executing-tickpay-payments/scripts
+cd .claude/skills/executing-safeflow-payments/scripts
 chmod +x setup.sh execute_payment.sh
 ./setup.sh --package-id <YOUR_PACKAGE_ID>
 ```
@@ -55,9 +55,9 @@ The setup will:
 
 1. Use your active `sui` address as the wallet owner
 2. Request test SUI from faucet automatically (testnet only)
-3. Create a Tickpay Wallet on-chain
+3. Create a SafeFlow Wallet on-chain
 4. Create a dedicated agent address and SessionCap authorizing it to spend
-5. Save all configuration to `.tickpay-config.json`
+5. Save all configuration to `.safeflow-config.json`
 
 ## Step 3: Make Payments
 
@@ -69,12 +69,12 @@ The setup will:
 - `--amount`: Amount in MIST, e.g. `1000000000` = 1 SUI (required)
 - `--blob-id`: Optional Walrus blob ID for audit trail
 
-All other parameters load automatically from `.tickpay-config.json`.
+All other parameters load automatically from `.safeflow-config.json`.
 
 ## Full Example
 
 ```bash
-cd .claude/skills/executing-tickpay-payments/scripts
+cd .claude/skills/executing-safeflow-payments/scripts
 
 # Deploy contract (first time only)
 # cd sui/agent_wallet && sui client publish --gas-budget 100000000
@@ -97,7 +97,7 @@ sui client transfer-sui --to <WALLET_ID> --amount 5000000000 --gas-budget 100000
 
 **"Insufficient balance" error:**
 
-- Fund the Tickpay wallet: `sui client transfer-sui --to <WALLET_ID> --amount 1000000000 --gas-budget 10000000`
+- Fund the SafeFlow wallet: `sui client transfer-sui --to <WALLET_ID> --amount 1000000000 --gas-budget 10000000`
 - Or re-run setup for testnet faucet: `./setup.sh --package-id <id> --force`
 
 **"Unauthorized" or SessionCap expired:**
