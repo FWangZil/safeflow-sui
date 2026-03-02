@@ -25,6 +25,20 @@ function hasFlag(name: string): boolean {
     return process.argv.includes(name);
 }
 
+function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean {
+    if (value === undefined) {
+        return fallback;
+    }
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'y', 'on'].includes(normalized)) {
+        return true;
+    }
+    if (['0', 'false', 'no', 'n', 'off'].includes(normalized)) {
+        return false;
+    }
+    return fallback;
+}
+
 function loadAgentSecret(): string | Uint8Array {
     const keyFile = path.join(__dirname, '.agent_key.json');
     const raw = JSON.parse(fs.readFileSync(keyFile, 'utf-8')) as { secretKey?: unknown };
@@ -84,8 +98,18 @@ async function main() {
 
     const mode = getArg('--mode') ?? 'success';
     const recipient = getArg('--recipient') ?? EXPECTED_AGENT_ADDRESS;
-    const walrusBlobId = getArg('--blob-id') ?? `demo_${Date.now()}`;
+    const walrusBlobId = getArg('--blob-id');
+    const reasoning = getArg('--reason') ?? `SafeFlow ${mode} payment test`;
     const skipAgentTopUp = hasFlag('--skip-agent-topup');
+    const walrusPublisher = getArg('--walrus-publisher') ?? process.env.WALRUS_PUBLISHER_URL;
+    const walrusAggregator = getArg('--walrus-aggregator') ?? process.env.WALRUS_AGGREGATOR_URL;
+    const walrusEpochsRaw = getArg('--walrus-epochs') ?? process.env.WALRUS_EPOCHS ?? '5';
+    const walrusEpochs = Number.parseInt(walrusEpochsRaw, 10);
+    if (!Number.isInteger(walrusEpochs) || walrusEpochs <= 0) {
+        throw new Error(`Invalid walrus epochs: ${walrusEpochsRaw}`);
+    }
+    const walrusDegradeRaw = getArg('--walrus-degrade') ?? process.env.WALRUS_DEGRADE_ON_UPLOAD_FAILURE;
+    const walrusDegrade = parseBooleanFlag(walrusDegradeRaw, true);
 
     const amountByMode: Record<string, number> = {
         success: 1_000_000,   // 0.001 SUI
@@ -129,6 +153,13 @@ async function main() {
                 recipient,
                 amount,
                 walrusBlobId,
+                reasoning,
+                walrus: {
+                    publisher: walrusPublisher ?? null,
+                    aggregator: walrusAggregator ?? null,
+                    epochs: walrusEpochs,
+                    degradeOnUploadFailure: walrusDegrade,
+                },
             },
             null,
             2,
@@ -136,12 +167,65 @@ async function main() {
     );
 
     try {
-        const result = await agent.executePayment(
-            WALLET_ID,
-            SESSION_CAP_ID,
+        if (walrusBlobId && walrusBlobId.length > 0) {
+            const result = await agent.executePayment(
+                WALLET_ID,
+                SESSION_CAP_ID,
+                recipient,
+                amount,
+                walrusBlobId,
+            );
+            console.log(
+                JSON.stringify(
+                    {
+                        success: true,
+                        mode,
+                        uploadStatus: 'provided',
+                        walrusBlobId,
+                        txDigest: result.digest,
+                    },
+                    null,
+                    2,
+                ),
+            );
+            console.log(`SUCCESS: digest=${result.digest}`);
+            return;
+        }
+
+        const result = await agent.executePaymentWithEvidence({
+            walletId: WALLET_ID,
+            sessionCapId: SESSION_CAP_ID,
             recipient,
             amount,
-            walrusBlobId,
+            mode,
+            reasoning,
+            context: {
+                script: 'agent_scripts/test.ts',
+                skipAgentTopUp,
+            },
+            walrusConfig: {
+                ...(walrusPublisher ? { publisherUrl: walrusPublisher } : {}),
+                ...(walrusAggregator ? { aggregatorUrl: walrusAggregator } : {}),
+                epochs: walrusEpochs,
+            },
+            degradeOnUploadFailure: walrusDegrade,
+        });
+
+        console.log(
+            JSON.stringify(
+                {
+                    success: true,
+                    mode,
+                    uploadStatus: result.uploadStatus,
+                    walrusBlobId: result.walrusBlobId,
+                    aggregatorUrl: result.aggregatorUrl,
+                    siteUrl: result.siteUrl,
+                    uploadError: result.uploadError ?? null,
+                    txDigest: result.digest,
+                },
+                null,
+                2,
+            ),
         );
         console.log(`SUCCESS: digest=${result.digest}`);
     } catch (error) {

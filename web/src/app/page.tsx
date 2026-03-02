@@ -10,6 +10,13 @@ const CLOCK_OBJECT_ID = '0x6';
 const DEFAULT_MAX_SPEND_PER_SECOND = 1_000_000;
 const DEFAULT_MAX_TOTAL_SPEND = 5_000_000_000;
 const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_WALRUS_AGGREGATOR_URL = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.testnet.walrus.space';
+const DEFAULT_WALRUS_SITE_SUFFIX = process.env.NEXT_PUBLIC_WALRUS_SITE_SUFFIX || '.walrus.site';
+
+interface BlobLinks {
+    aggregatorUrl: string;
+    siteUrl: string | null;
+}
 
 function getErrorMessage(error: unknown): string {
     if (error instanceof Error) {
@@ -75,6 +82,41 @@ function extractIdFromEvents(events: Array<{ type: string; parsedJson: unknown }
     return null;
 }
 
+function extractWalrusBlobIdFromPaymentEvent(events: Array<{ type: string; parsedJson: unknown }>, packageId: string): string | null {
+    const exactType = `${packageId}::wallet::PaymentExecuted`;
+
+    for (const event of events) {
+        const isPaymentEvent = event.type === exactType || event.type.endsWith('::wallet::PaymentExecuted');
+        if (!isPaymentEvent) {
+            continue;
+        }
+        if (!isRecord(event.parsedJson)) {
+            continue;
+        }
+        const blobId = event.parsedJson.walrus_blob_id;
+        if (typeof blobId === 'string' && blobId.length > 0) {
+            return blobId;
+        }
+    }
+
+    return null;
+}
+
+function buildWalrusLinks(blobId: string): BlobLinks {
+    const aggregatorUrl = `${DEFAULT_WALRUS_AGGREGATOR_URL.replace(/\/+$/, '')}/v1/blobs/${encodeURIComponent(blobId)}`;
+    if (blobId.startsWith('fallback:')) {
+        return {
+            aggregatorUrl,
+            siteUrl: null,
+        };
+    }
+    const suffix = DEFAULT_WALRUS_SITE_SUFFIX.startsWith('.') ? DEFAULT_WALRUS_SITE_SUFFIX : `.${DEFAULT_WALRUS_SITE_SUFFIX}`;
+    return {
+        aggregatorUrl,
+        siteUrl: `https://${blobId}${suffix}`,
+    };
+}
+
 export default function Home() {
     const currentAccount = useCurrentAccount();
     const suiClient = useSuiClient();
@@ -84,6 +126,10 @@ export default function Home() {
     const [status, setStatus] = useState('');
     const [walletId, setWalletId] = useState('');
     const [sessionCapId, setSessionCapId] = useState('');
+    const [queryDigest, setQueryDigest] = useState('');
+    const [queryStatus, setQueryStatus] = useState('');
+    const [resolvedBlobId, setResolvedBlobId] = useState('');
+    const [blobLinks, setBlobLinks] = useState<BlobLinks | null>(null);
 
     const handleCreateWalletAndCap = async () => {
         if (!currentAccount) {
@@ -180,6 +226,53 @@ export default function Home() {
         }
     };
 
+    const handleLookupWalrusEvidence = async () => {
+        const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
+        if (!packageId) {
+            setQueryStatus('Missing NEXT_PUBLIC_PACKAGE_ID. Please set it to your deployed package id.');
+            return;
+        }
+
+        const digest = queryDigest.trim();
+        if (!digest) {
+            setQueryStatus('Please enter a transaction digest.');
+            return;
+        }
+
+        try {
+            setQueryStatus('Fetching transaction events...');
+            setResolvedBlobId('');
+            setBlobLinks(null);
+
+            const tx = await suiClient.getTransactionBlock({
+                digest,
+                options: { showEvents: true },
+            });
+            const events = tx.events ?? [];
+            const blobId = extractWalrusBlobIdFromPaymentEvent(events as Array<{ type: string; parsedJson: unknown }>, packageId);
+            if (!blobId) {
+                setQueryStatus('No PaymentExecuted event with walrus_blob_id found in this transaction.');
+                return;
+            }
+
+            setResolvedBlobId(blobId);
+            setBlobLinks(buildWalrusLinks(blobId));
+            setQueryStatus('Walrus evidence resolved.');
+        } catch (error: unknown) {
+            console.error('Failed to fetch Walrus evidence', error);
+            setQueryStatus(`Error: ${getErrorMessage(error)}`);
+        }
+    };
+
+    const handleCopy = async (value: string) => {
+        try {
+            await navigator.clipboard.writeText(value);
+            setQueryStatus('Copied to clipboard.');
+        } catch {
+            setQueryStatus('Copy failed. Please copy manually.');
+        }
+    };
+
     return (
         <main className="flex min-h-screen flex-col items-center p-24 bg-zinc-50">
             <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
@@ -252,7 +345,60 @@ export default function Home() {
                     )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-8">
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-zinc-100 mb-8">
+                    <h2 className="text-xl font-semibold mb-4 text-zinc-800">Walrus Evidence Lookup</h2>
+                    <p className="text-zinc-600 mb-4">
+                        Paste a payment transaction digest to resolve `walrus_blob_id` and open evidence links.
+                    </p>
+                    <div className="flex flex-col md:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={queryDigest}
+                            onChange={(e) => setQueryDigest(e.target.value)}
+                            className="flex-1 p-2 border border-zinc-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
+                            placeholder="Transaction digest (e.g. 2uknWpv1...)"
+                        />
+                        <button
+                            onClick={handleLookupWalrusEvidence}
+                            className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                        >
+                            Resolve Evidence
+                        </button>
+                    </div>
+
+                    {queryStatus && (
+                        <div className="mt-4 p-3 bg-zinc-100 rounded-md text-sm font-mono text-zinc-800">
+                            {queryStatus}
+                        </div>
+                    )}
+                    {resolvedBlobId && (
+                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all">
+                            <div className="mb-2">walrus_blob_id: {resolvedBlobId}</div>
+                            <button
+                                onClick={() => handleCopy(resolvedBlobId)}
+                                className="bg-white hover:bg-zinc-50 border border-zinc-300 rounded px-2 py-1 text-xs"
+                            >
+                                Copy blob id
+                            </button>
+                        </div>
+                    )}
+                    {blobLinks && (
+                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all space-y-2">
+                            <div>
+                                aggregator: <a className="text-blue-600 underline" href={blobLinks.aggregatorUrl} target="_blank" rel="noreferrer">{blobLinks.aggregatorUrl}</a>
+                            </div>
+                            {blobLinks.siteUrl ? (
+                                <div>
+                                    site: <a className="text-blue-600 underline" href={blobLinks.siteUrl} target="_blank" rel="noreferrer">{blobLinks.siteUrl}</a>
+                                </div>
+                            ) : (
+                                <div>site: not available for fallback blob ids</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-white p-6 rounded-xl shadow-sm border border-zinc-100">
                         <h3 className="font-semibold text-lg mb-2 text-zinc-800">1. Rate-Limited</h3>
                         <p className="text-sm text-zinc-600">The agent cannot spend faster than the limit you set, stopping malicious prompt injections from draining funds.</p>

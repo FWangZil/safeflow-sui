@@ -1,4 +1,5 @@
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
+import { type WalrusClientConfig, type WalrusReasoningPayload, type WalrusUploadResult } from './walrus.js';
 export interface SafeFlowAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
     packageId: string;
@@ -13,6 +14,27 @@ export interface SetupResult {
     walletId: string;
     sessionCapId: string;
     agentAddress: string;
+}
+export interface ExecutePaymentWithEvidenceParams {
+    walletId: string;
+    sessionCapId: string;
+    recipient: string;
+    amount: number;
+    walrusBlobId?: string;
+    reasoning?: string;
+    context?: Record<string, unknown>;
+    mode?: string;
+    walrusConfig?: Partial<WalrusClientConfig>;
+    degradeOnUploadFailure?: boolean;
+}
+export interface ExecutePaymentWithEvidenceResult {
+    digest: string;
+    walrusBlobId: string;
+    uploadStatus: 'provided' | 'uploaded' | 'fallback';
+    aggregatorUrl: string | null;
+    siteUrl: string | null;
+    uploadError?: string;
+    uploadResult?: WalrusUploadResult;
 }
 export declare class SafeFlowAgent {
     private client;
@@ -43,6 +65,15 @@ export declare class SafeFlowAgent {
      * This is the core skill that agents will use to execute payments
      */
     executePayment(walletId: string, sessionCapId: string, recipient: string, amount: number, walrusBlobId: string): Promise<import("@mysten/sui.js/client").SuiTransactionBlockResponse>;
+    /**
+     * Upload reasoning payload to Walrus testnet and return the resolved blob metadata.
+     */
+    uploadReasoningToWalrus(payload: WalrusReasoningPayload, config?: Partial<WalrusClientConfig>): Promise<WalrusUploadResult>;
+    /**
+     * Execute payment with real Walrus evidence upload.
+     * If upload fails and degradeOnUploadFailure is true, it falls back to a deterministic hash-based marker.
+     */
+    executePaymentWithEvidence(params: ExecutePaymentWithEvidenceParams): Promise<ExecutePaymentWithEvidenceResult>;
     /**
      * Request SUI from the testnet faucet
      */

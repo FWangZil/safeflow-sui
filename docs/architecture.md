@@ -55,10 +55,10 @@
 
 ### 3. Walrus 审计日志 (Audit Trail)
 在 Web2 世界中，支付往往伴随着订单和账单。在 Agent 自治的场景下，我们利用 Walrus 实现“自证清白”的支付：
-- Agent 必须先将其思考过程（如：“我需要调用 OpenAI 接口翻译一段文本，预计花费 0.01$，因此我申请支付”）打包并存储到 Walrus。
-- Walrus 返回一个 immutable 的 `Blob ID`。
-- Move 合约的 `execute_payment` 函数强制要求传入这个 `Blob ID` 并将其作为 Event 发射。
-- 这意味着：链上发生的每一笔钱的流失，都必定带有一个去中心化存储的说明文件。
+- Agent 在执行支付前会把推理过程（如：“我需要调用 OpenAI 接口翻译一段文本，预计花费 0.01$，因此我申请支付”）打包并上传到 Walrus。
+- Walrus 成功时返回 immutable 的 `Blob ID`；上传失败时（默认策略）SDK 会写入 `fallback:<sha256(payload)>` 继续执行，保证付款流程不中断且仍可追踪。
+- Move 合约的 `execute_payment` 会把 `walrus_blob_id` 作为 Event 发射，前端可通过交易 digest 回查该字段并拼接 aggregator/site 链接。
+- 这意味着：链上发生的每一笔支付，都会携带可审计的证据引用（真实 blob 或 fallback hash）。
 
 ## 安全性分析 (The Air-Gap)
 

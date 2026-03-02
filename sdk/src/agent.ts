@@ -2,6 +2,12 @@ import { getFullnodeUrl, SuiClient } from '@mysten/sui.js/client';
 import { decodeSuiPrivateKey } from '@mysten/sui.js/cryptography';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
+import {
+    uploadJsonToWalrus,
+    type WalrusClientConfig,
+    type WalrusReasoningPayload,
+    type WalrusUploadResult,
+} from './walrus.js';
 
 export interface SafeFlowAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
@@ -19,6 +25,29 @@ export interface SetupResult {
     walletId: string;
     sessionCapId: string;
     agentAddress: string;
+}
+
+export interface ExecutePaymentWithEvidenceParams {
+    walletId: string;
+    sessionCapId: string;
+    recipient: string;
+    amount: number;
+    walrusBlobId?: string;
+    reasoning?: string;
+    context?: Record<string, unknown>;
+    mode?: string;
+    walrusConfig?: Partial<WalrusClientConfig>;
+    degradeOnUploadFailure?: boolean;
+}
+
+export interface ExecutePaymentWithEvidenceResult {
+    digest: string;
+    walrusBlobId: string;
+    uploadStatus: 'provided' | 'uploaded' | 'fallback';
+    aggregatorUrl: string | null;
+    siteUrl: string | null;
+    uploadError?: string;
+    uploadResult?: WalrusUploadResult;
 }
 
 export class SafeFlowAgent {
@@ -185,6 +214,98 @@ export class SafeFlowAgent {
     }
 
     /**
+     * Upload reasoning payload to Walrus testnet and return the resolved blob metadata.
+     */
+    public async uploadReasoningToWalrus(
+        payload: WalrusReasoningPayload,
+        config?: Partial<WalrusClientConfig>,
+    ): Promise<WalrusUploadResult> {
+        try {
+            return await uploadJsonToWalrus(payload, config);
+        } catch (error: any) {
+            throw new Error(`Walrus upload failed: ${error?.message ?? String(error)}`);
+        }
+    }
+
+    /**
+     * Execute payment with real Walrus evidence upload.
+     * If upload fails and degradeOnUploadFailure is true, it falls back to a deterministic hash-based marker.
+     */
+    public async executePaymentWithEvidence(
+        params: ExecutePaymentWithEvidenceParams,
+    ): Promise<ExecutePaymentWithEvidenceResult> {
+        const degradeOnUploadFailure = params.degradeOnUploadFailure ?? true;
+        if (params.walrusBlobId && params.walrusBlobId.trim().length > 0) {
+            const result = await this.executePayment(
+                params.walletId,
+                params.sessionCapId,
+                params.recipient,
+                params.amount,
+                params.walrusBlobId,
+            );
+            return {
+                digest: result.digest,
+                walrusBlobId: params.walrusBlobId,
+                uploadStatus: 'provided',
+                aggregatorUrl: null,
+                siteUrl: null,
+            };
+        }
+
+        const payload: WalrusReasoningPayload = {
+            version: '1.0.0',
+            timestampMs: Date.now(),
+            agentAddress: this.getAddress(),
+            walletId: params.walletId,
+            sessionCapId: params.sessionCapId,
+            recipient: params.recipient,
+            amountMist: params.amount,
+            mode: params.mode ?? 'payment',
+            reasoning: params.reasoning ?? 'SafeFlow payment execution',
+            context: params.context,
+        };
+
+        try {
+            const uploadResult = await this.uploadReasoningToWalrus(payload, params.walrusConfig);
+            const txResult = await this.executePayment(
+                params.walletId,
+                params.sessionCapId,
+                params.recipient,
+                params.amount,
+                uploadResult.blobId,
+            );
+            return {
+                digest: txResult.digest,
+                walrusBlobId: uploadResult.blobId,
+                uploadStatus: 'uploaded',
+                aggregatorUrl: uploadResult.aggregatorUrl,
+                siteUrl: uploadResult.siteUrl,
+                uploadResult,
+            };
+        } catch (error: any) {
+            if (!degradeOnUploadFailure) {
+                throw new Error(`SafeFlow execution failed: ${error?.message ?? String(error)}`);
+            }
+            const fallbackBlobId = await buildFallbackWalrusBlobId(payload);
+            const txResult = await this.executePayment(
+                params.walletId,
+                params.sessionCapId,
+                params.recipient,
+                params.amount,
+                fallbackBlobId,
+            );
+            return {
+                digest: txResult.digest,
+                walrusBlobId: fallbackBlobId,
+                uploadStatus: 'fallback',
+                aggregatorUrl: null,
+                siteUrl: null,
+                uploadError: error?.message ?? String(error),
+            };
+        }
+    }
+
+    /**
      * Request SUI from the testnet faucet
      */
     public async requestFaucet(): Promise<void> {
@@ -292,4 +413,13 @@ function normalizeSecretKey(secretKey: string | Uint8Array | number[]): Uint8Arr
     } catch {
         throw new Error('Unsupported secretKey format. Use Uint8Array, number[], hex string, or base64 string.');
     }
+}
+
+async function buildFallbackWalrusBlobId(payload: WalrusReasoningPayload): Promise<string> {
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    const hash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+    return `fallback:${hash}`;
 }

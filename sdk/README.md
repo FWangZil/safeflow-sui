@@ -6,6 +6,7 @@ This is the Sui SDK and Agent Skill package for SafeFlow. It provides an easy wa
 
 - **SafeFlowAgent**: A core wrapper around Sui client and keys to authorize and execute SafeFlow sessions.
 - **OpenClaw Skill**: A ready-to-use tool definition (`createSafeFlowSkill`) that can be directly registered into agent frameworks.
+- **Walrus testnet integration**: Upload reasoning payloads to Walrus and pass real `walrus_blob_id` to on-chain payment events.
 
 ## Installation
 
@@ -31,16 +32,23 @@ const agent = new SafeFlowAgent({
 
 console.log(`Agent Address: ${agent.getAddress()}`);
 
-// Execute a payment on behalf of a user's session
-const result = await agent.executePayment(
-    '0x_WALLET_ID',
-    '0x_SESSION_CAP_ID',
-    '0x_RECIPIENT_ADDRESS',
-    1000000, // Amount in MIST
-    'walrus_blob_id_or_empty'
-);
+// Execute payment and auto-upload evidence to Walrus (with fallback hash if enabled)
+const result = await agent.executePaymentWithEvidence({
+    walletId: '0x_WALLET_ID',
+    sessionCapId: '0x_SESSION_CAP_ID',
+    recipient: '0x_RECIPIENT_ADDRESS',
+    amount: 1000000, // Amount in MIST
+    reasoning: 'Paying for LLM API call',
+    mode: 'success',
+    walrusConfig: {
+        publisherUrl: 'https://publisher.testnet.walrus.space',
+        aggregatorUrl: 'https://aggregator.testnet.walrus.space',
+        epochs: 5,
+    },
+    degradeOnUploadFailure: true,
+});
 
-console.log('Payment executed!', result.digest);
+console.log('Payment executed!', result.digest, result.walrusBlobId, result.uploadStatus);
 ```
 
 ### As an OpenClaw Skill

@@ -1,4 +1,5 @@
 import { SafeFlowAgent } from './agent.js';
+import type { WalrusClientConfig } from './walrus.js';
 
 /**
  * Interface for an OpenClaw or generic agent tool
@@ -43,6 +44,18 @@ export function createSafeFlowSkill(agent: SafeFlowAgent): AgentTool {
                 walrusBlobId: {
                     type: 'string',
                     description: 'The Walrus Blob ID containing the payment reason or metadata (optional, can be empty string)'
+                },
+                reasoning: {
+                    type: 'string',
+                    description: 'Human-readable reasoning text that will be uploaded to Walrus when walrusBlobId is omitted'
+                },
+                context: {
+                    type: 'object',
+                    description: 'Optional structured context attached to the Walrus reasoning payload'
+                },
+                walrusConfig: {
+                    type: 'object',
+                    description: 'Optional Walrus endpoint overrides (publisherUrl, aggregatorUrl, epochs, timeoutMs, apiKey)'
                 }
             },
             required: ['walletId', 'sessionCapId', 'recipient', 'amount']
@@ -52,20 +65,45 @@ export function createSafeFlowSkill(agent: SafeFlowAgent): AgentTool {
             sessionCapId: string,
             recipient: string,
             amount: number,
-            walrusBlobId?: string
+            walrusBlobId?: string,
+            reasoning?: string,
+            context?: Record<string, unknown>,
+            walrusConfig?: Partial<WalrusClientConfig>
         }) => {
             console.log(`[SafeFlow Skill] Executing payment of ${args.amount} MIST to ${args.recipient}...`);
             try {
-                const result = await agent.executePayment(
-                    args.walletId,
-                    args.sessionCapId,
-                    args.recipient,
-                    args.amount,
-                    args.walrusBlobId || ''
-                );
+                const hasExplicitBlob = typeof args.walrusBlobId === 'string' && args.walrusBlobId.length > 0;
+                const hasReasoningInput = typeof args.reasoning === 'string' || args.context !== undefined || args.walrusConfig !== undefined;
+                const result = hasExplicitBlob
+                    ? await agent.executePayment(
+                        args.walletId,
+                        args.sessionCapId,
+                        args.recipient,
+                        args.amount,
+                        args.walrusBlobId!,
+                    )
+                    : hasReasoningInput
+                        ? await agent.executePaymentWithEvidence({
+                            walletId: args.walletId,
+                            sessionCapId: args.sessionCapId,
+                            recipient: args.recipient,
+                            amount: args.amount,
+                            reasoning: args.reasoning,
+                            context: args.context,
+                            walrusConfig: args.walrusConfig,
+                        })
+                        : await agent.executePayment(
+                            args.walletId,
+                            args.sessionCapId,
+                            args.recipient,
+                            args.amount,
+                            '',
+                        );
                 return {
                     success: true,
                     digest: result.digest,
+                    walrusBlobId: hasExplicitBlob ? args.walrusBlobId : (result as any).walrusBlobId,
+                    uploadStatus: hasReasoningInput ? (result as any).uploadStatus : 'provided',
                     message: `Payment successful. Transaction digest: ${result.digest}`
                 };
             } catch (error: any) {
