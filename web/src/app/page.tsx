@@ -15,6 +15,31 @@ function getErrorMessage(error: unknown): string {
     if (error instanceof Error) {
         return error.message;
     }
+
+    if (isRecord(error)) {
+        const message = error.message;
+        if (typeof message === 'string' && message.length > 0) {
+            return message;
+        }
+
+        const errorCode = error.code;
+        const details = error.details;
+
+        try {
+            return JSON.stringify(
+                {
+                    code: typeof errorCode === 'string' || typeof errorCode === 'number' ? errorCode : undefined,
+                    message: message,
+                    details: details,
+                },
+                null,
+                2,
+            );
+        } catch {
+            return '[Unknown structured error]';
+        }
+    }
+
     return String(error);
 }
 
@@ -66,8 +91,13 @@ export default function Home() {
             return;
         }
 
-        if (!agentAddress) {
+        const normalizedAgentAddress = agentAddress.trim();
+        if (!normalizedAgentAddress) {
             setStatus('Please enter the Agent Address.');
+            return;
+        }
+        if (!/^0x[0-9a-fA-F]{64}$/.test(normalizedAgentAddress)) {
+            setStatus('Invalid agent address format. Expected 0x + 64 hex chars.');
             return;
         }
 
@@ -116,7 +146,7 @@ export default function Home() {
                 typeArguments: [SUI_COIN_TYPE],
                 arguments: [
                     createCapTx.object(createdWalletId),
-                    createCapTx.pure.address(agentAddress),
+                    createCapTx.pure.address(normalizedAgentAddress),
                     createCapTx.pure.u64(DEFAULT_MAX_SPEND_PER_SECOND),
                     createCapTx.pure.u64(DEFAULT_MAX_TOTAL_SPEND),
                     createCapTx.pure.u64(expiresAtMs),
@@ -145,6 +175,7 @@ export default function Home() {
             setSessionCapId(createdSessionCapId);
             setStatus(`Done. walletId=${createdWalletId}, sessionCapId=${createdSessionCapId}`);
         } catch (e: unknown) {
+            console.error('Failed to provision SafeFlow allowance', e);
             setStatus(`Error: ${getErrorMessage(e)}`);
         }
     };

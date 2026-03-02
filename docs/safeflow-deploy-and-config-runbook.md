@@ -54,6 +54,26 @@ cd web
 npm run dev
 ```
 
+## Deposit Into AgentWallet
+
+Do not transfer SUI directly to `walletId`. Use contract `deposit`:
+
+```bash
+chmod +x scripts/deposit_safeflow_wallet.sh
+./scripts/deposit_safeflow_wallet.sh --wallet-id <WALLET_ID> --amount-mist 1000000000
+```
+
+Optional:
+
+```bash
+./scripts/deposit_safeflow_wallet.sh \
+  --wallet-id <WALLET_ID> \
+  --amount-mist 500000000 \
+  --package-id <PACKAGE_ID> \
+  --from-coin-id <GAS_COIN_ID> \
+  --gas-budget 10000000
+```
+
 ## Troubleshooting
 
 1. `NativeCertsNotFound` / TLS errors:
@@ -66,4 +86,3 @@ npm run dev
    - Inspect files printed by script:
      - raw publish output
      - parsed JSON output
-
