@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test:payment": "tsx test.ts",
-    "verify:walrus": "tsx walrus_verify.ts"
+    "verify:walrus": "tsx walrus_verify.ts",
+    "create:intent": "tsx create_intent.ts",
+    "run:e2e": "tsx e2e_runner.ts"
   },
   "keywords": [],
   "author": "",

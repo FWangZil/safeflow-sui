@@ -41,8 +41,13 @@ This project leverages Sui's unique **Object Model** to solve this challenge by 
 │   └── Move.toml
 ├── agent_scripts/          # OpenClaw Agent local execution scripts & tools
 │   ├── index.ts            # Agent key management & PTB payment logic
+│   ├── create_intent.ts    # Create producer-side test payment intents
+│   ├── e2e_runner.ts       # Poll/ack/execute/report intent runner
 │   ├── package.json
 │   └── tsconfig.json
+├── producer_api/           # Signed PaymentIntent producer API
+│   ├── server.mjs
+│   └── package.json
 ├── web/                    # Main dashboard for humans (Next.js)
 │   ├── src/app/
 │   │   ├── page.tsx        # Dashboard UI
@@ -98,7 +103,40 @@ Record the **Agent Address** printed in the console.
 
 *(In actual use, have the Human Dashboard grant a `SessionCap` to this address, then fill in `walletId/sessionCapId` in the script to execute real payments.)*
 
-### 3. Run Human Dashboard (Frontend)
+### 3. Run Producer API (Payment Intent Producer)
+
+```bash
+cd producer_api
+
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+# export PRODUCER_API_KEY=<OPTIONAL_WRITE_API_KEY>
+
+node server.mjs
+```
+
+### 4. Create Intent + Run Agent E2E Runner
+
+```bash
+cd agent_scripts
+
+export PRODUCER_API_BASE_URL=http://localhost:8787
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+# export PRODUCER_API_KEY=<OPTIONAL_WRITE_API_KEY>
+
+# Create a test intent
+npx tsx create_intent.ts \
+  --agent-address <AGENT_ADDRESS> \
+  --wallet-id <WALLET_ID> \
+  --session-cap-id <SESSION_CAP_ID> \
+  --recipient <RECIPIENT_ADDRESS> \
+  --amount-mist 1000000 \
+  --reason "demo e2e payment"
+
+# Run polling consumer
+npx tsx e2e_runner.ts --poll-ms 3000
+```
+
+### 5. Run Human Dashboard (Frontend)
 
 ```bash
 cd web
@@ -110,6 +148,7 @@ bun install
 export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
 export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
 export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
+export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
 
 # Run development server
 bun run dev
@@ -121,6 +160,7 @@ Open `http://localhost:3000` in your browser. Connect your Sui wallet, input the
 2. `create_session_cap`
 
 You can then enter a payment transaction digest in the **Walrus Evidence Lookup** section to resolve and open the evidence link corresponding to the `walrus_blob_id`.
+You can also query `intentId` in **Producer Intent Observer** to track status (`pending/claimed/executed/failed`) and correlate `txDigest` + `walrus_blob_id`.
 
 ## Use Cases (Track Matching)
 

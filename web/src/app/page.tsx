@@ -12,10 +12,26 @@ const DEFAULT_MAX_TOTAL_SPEND = 5_000_000_000;
 const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_WALRUS_AGGREGATOR_URL = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.testnet.walrus.space';
 const DEFAULT_WALRUS_SITE_SUFFIX = process.env.NEXT_PUBLIC_WALRUS_SITE_SUFFIX || '.walrus.site';
+const DEFAULT_PRODUCER_API_BASE_URL = process.env.NEXT_PUBLIC_PRODUCER_API_BASE_URL || 'http://localhost:8787';
 
 interface BlobLinks {
     aggregatorUrl: string;
     siteUrl: string | null;
+}
+
+interface ObservedIntent {
+    intentId: string;
+    merchantOrderId: string;
+    status: string;
+    reason: string;
+    amountMist: number;
+    recipient: string;
+    txDigest?: string;
+    walrusBlobId?: string;
+    errorCode?: string;
+    errorMessage?: string;
+    createdAtMs: number;
+    updatedAtMs: number;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -130,6 +146,10 @@ export default function Home() {
     const [queryStatus, setQueryStatus] = useState('');
     const [resolvedBlobId, setResolvedBlobId] = useState('');
     const [blobLinks, setBlobLinks] = useState<BlobLinks | null>(null);
+    const [intentIdQuery, setIntentIdQuery] = useState('');
+    const [intentStatus, setIntentStatus] = useState('');
+    const [observedIntent, setObservedIntent] = useState<ObservedIntent | null>(null);
+    const [observedIntentBlobLinks, setObservedIntentBlobLinks] = useState<BlobLinks | null>(null);
 
     const handleCreateWalletAndCap = async () => {
         if (!currentAccount) {
@@ -273,6 +293,34 @@ export default function Home() {
         }
     };
 
+    const handleLookupIntent = async () => {
+        const intentId = intentIdQuery.trim();
+        if (!intentId) {
+            setIntentStatus('Please enter an intent ID.');
+            return;
+        }
+
+        try {
+            setIntentStatus('Fetching intent from producer API...');
+            setObservedIntent(null);
+            setObservedIntentBlobLinks(null);
+
+            const response = await fetch(`${DEFAULT_PRODUCER_API_BASE_URL.replace(/\/+$/, '')}/v1/intents/${encodeURIComponent(intentId)}`);
+            const payload = await response.json() as { intent?: ObservedIntent; error?: string };
+            if (!response.ok || !payload.intent) {
+                throw new Error(payload.error || `HTTP ${response.status}`);
+            }
+
+            setObservedIntent(payload.intent);
+            if (payload.intent.walrusBlobId) {
+                setObservedIntentBlobLinks(buildWalrusLinks(payload.intent.walrusBlobId));
+            }
+            setIntentStatus('Intent loaded.');
+        } catch (error) {
+            setIntentStatus(`Error: ${getErrorMessage(error)}`);
+        }
+    };
+
     return (
         <main className="flex min-h-screen flex-col items-center p-24 bg-zinc-50">
             <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
@@ -390,6 +438,69 @@ export default function Home() {
                             {blobLinks.siteUrl ? (
                                 <div>
                                     site: <a className="text-blue-600 underline" href={blobLinks.siteUrl} target="_blank" rel="noreferrer">{blobLinks.siteUrl}</a>
+                                </div>
+                            ) : (
+                                <div>site: not available for fallback blob ids</div>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-white p-8 rounded-xl shadow-sm border border-zinc-100 mb-8">
+                    <h2 className="text-xl font-semibold mb-4 text-zinc-800">Producer Intent Observer</h2>
+                    <p className="text-zinc-600 mb-4">
+                        Query producer API intent status and on-chain execution trace by `intentId`.
+                    </p>
+                    <div className="flex flex-col md:flex-row gap-3">
+                        <input
+                            type="text"
+                            value={intentIdQuery}
+                            onChange={(e) => setIntentIdQuery(e.target.value)}
+                            className="flex-1 p-2 border border-zinc-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
+                            placeholder="intentId (UUID)"
+                        />
+                        <button
+                            onClick={handleLookupIntent}
+                            className="bg-emerald-700 hover:bg-emerald-800 text-white font-medium py-2 px-4 rounded-md transition-colors"
+                        >
+                            Query Intent
+                        </button>
+                    </div>
+
+                    <div className="mt-3 text-xs text-zinc-500 font-mono">
+                        API: {DEFAULT_PRODUCER_API_BASE_URL}
+                    </div>
+
+                    {intentStatus && (
+                        <div className="mt-4 p-3 bg-zinc-100 rounded-md text-sm font-mono text-zinc-800">
+                            {intentStatus}
+                        </div>
+                    )}
+
+                    {observedIntent && (
+                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all space-y-2">
+                            <div>intentId: {observedIntent.intentId}</div>
+                            <div>orderId: {observedIntent.merchantOrderId}</div>
+                            <div>status: {observedIntent.status}</div>
+                            <div>reason: {observedIntent.reason}</div>
+                            <div>amountMist: {observedIntent.amountMist}</div>
+                            <div>recipient: {observedIntent.recipient}</div>
+                            {observedIntent.txDigest && <div>txDigest: {observedIntent.txDigest}</div>}
+                            {observedIntent.walrusBlobId && <div>walrusBlobId: {observedIntent.walrusBlobId}</div>}
+                            {observedIntent.errorCode && <div>errorCode: {observedIntent.errorCode}</div>}
+                            {observedIntent.errorMessage && <div>errorMessage: {observedIntent.errorMessage}</div>}
+                            <div>updatedAt: {new Date(observedIntent.updatedAtMs).toLocaleString()}</div>
+                        </div>
+                    )}
+
+                    {observedIntentBlobLinks && (
+                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all space-y-2">
+                            <div>
+                                aggregator: <a className="text-blue-600 underline" href={observedIntentBlobLinks.aggregatorUrl} target="_blank" rel="noreferrer">{observedIntentBlobLinks.aggregatorUrl}</a>
+                            </div>
+                            {observedIntentBlobLinks.siteUrl ? (
+                                <div>
+                                    site: <a className="text-blue-600 underline" href={observedIntentBlobLinks.siteUrl} target="_blank" rel="noreferrer">{observedIntentBlobLinks.siteUrl}</a>
                                 </div>
                             ) : (
                                 <div>site: not available for fallback blob ids</div>

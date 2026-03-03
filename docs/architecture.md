@@ -43,6 +43,12 @@
 
 ## 核心组件设计
 
+### 0. Producer API（支付意图生产者）
+为形成真实业务闭环，我们新增了一个轻量 `Producer API`：
+- 服务端创建并签名 `PaymentIntent`（金额、收款方、过期时间、理由等）。
+- Agent 通过轮询拉取待执行 intent，先验签、再 ACK、后执行支付并回写结果。
+- API 内部维护 `pending -> claimed -> executed/failed/expired` 状态机，避免重复执行。
+
 ### 1. AgentWallet (智能体钱包)
 由于 Agent 需要在后台（独立于人类干预）进行支付操作，它需要能够访问存放资金的钱包。在 Sui 中，我们将 `AgentWallet` 设计为 **Shared Object (共享对象)**：
 - 只有创建者（人类）可以注资。

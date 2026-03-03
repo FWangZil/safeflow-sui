@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { SafeFlowAgent, createSafeFlowSkill } from '@safeflow/sui-sdk';
+import { SafeFlowAgent, createProducerApiSkills, createSafeFlowSkill, ProducerApiClient } from '@safeflow/sui-sdk';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -83,6 +83,13 @@ async function main() {
 
     // 2. Create the Skill tool definition
     const safeFlowSkill = createSafeFlowSkill(agent);
+    const producerBaseUrl = process.env.PRODUCER_API_BASE_URL ?? 'http://localhost:8787';
+    const producerClient = new ProducerApiClient({
+        baseUrl: producerBaseUrl,
+        ...(process.env.PRODUCER_API_KEY ? { apiKey: process.env.PRODUCER_API_KEY } : {}),
+        ...(process.env.PRODUCER_SIGNING_SECRET ? { signingSecret: process.env.PRODUCER_SIGNING_SECRET } : {}),
+    });
+    const producerSkills = createProducerApiSkills(producerClient);
 
     console.log('📦 Extracted Agent Skill Ready to be registered:');
     console.log(JSON.stringify({
@@ -90,6 +97,13 @@ async function main() {
         description: safeFlowSkill.description,
         parameters: safeFlowSkill.parameters
     }, null, 2));
+
+    console.log('\n📦 Producer API Skills Ready to be registered:');
+    console.log(JSON.stringify(producerSkills.map((skill: { name: string; description: string; parameters: unknown }) => ({
+        name: skill.name,
+        description: skill.description,
+        parameters: skill.parameters,
+    })), null, 2));
 
     // Uncomment and fill to test executing via the skill:
     // console.log('\nExecuting skill directly for test...');
