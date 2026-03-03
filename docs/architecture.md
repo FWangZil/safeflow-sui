@@ -2,6 +2,8 @@
 
 本架构文档旨在说明 SafeFlow 是如何利用 Sui 区块链的特性（特别是 Object Model）结合 OpenClaw 实现 Agent-native Payments 的。
 
+完整多角色全链路流程图请见：[`safeflow-e2e-role-flow.md`](./safeflow-e2e-role-flow.md)。
+
 ## 整体架构图
 
 ```text

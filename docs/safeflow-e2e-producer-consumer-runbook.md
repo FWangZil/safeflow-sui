@@ -4,6 +4,9 @@ This runbook demonstrates the full real-world flow:
 
 `Producer API -> Agent poll/ack/execute -> on-chain tx + Walrus proof -> API result state`.
 
+For role responsibilities and full sequence/state diagrams, see:
+[`docs/safeflow-e2e-role-flow.md`](./safeflow-e2e-role-flow.md)
+
 ## 1) Start Producer API
 
 ```bash

@@ -40,8 +40,20 @@ sui client publish --gas-budget <value> --json
    - `.objectChanges[] | select(.type=="published") | .packageId`
    - Fallback: `.changed_objects[] ... | .objectId`
 6. Writes:
-   - `agent_scripts/.env` with `PACKAGE_ID=<id>`
-   - `web/.env.local` with `NEXT_PUBLIC_PACKAGE_ID=<id>`
+   - `agent_scripts/.env` with:
+     - `PACKAGE_ID=<id>`
+     - `WALRUS_PUBLISHER_URL`
+     - `WALRUS_AGGREGATOR_URL`
+     - `WALRUS_EPOCHS`
+     - `WALRUS_DEGRADE_ON_UPLOAD_FAILURE`
+     - `PRODUCER_API_BASE_URL`
+     - `PRODUCER_SIGNING_SECRET`
+     - `PRODUCER_API_KEY`
+   - `web/.env.local` with:
+     - `NEXT_PUBLIC_PACKAGE_ID=<id>`
+     - `NEXT_PUBLIC_WALRUS_AGGREGATOR_URL`
+     - `NEXT_PUBLIC_WALRUS_SITE_SUFFIX`
+     - `NEXT_PUBLIC_PRODUCER_API_BASE_URL`
 
 ## Current Published Package (from latest run)
 

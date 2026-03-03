@@ -14,6 +14,13 @@ This project leverages Sui's unique **Object Model** to solve this challenge by 
 2. **Strict Rate Limiting**: The `SessionCap` enforces a "maximum spend per second" and a "total spending limit" for the agent. Even if the agent goes rogue, it cannot instantly drain the wallet.
 3. **Audit Trail with Walrus**: Agent scripts upload reasoning evidence to Walrus (testnet) before executing a payment. A degradation strategy is enabled by default; if the upload fails, it continues the payment with a `fallback:<sha256>` tag, ensuring the process is non-blocking and traceable.
 
+## Documentation Map
+
+- Architecture: [`docs/architecture.md`](./docs/architecture.md)
+- Full E2E role flow diagram: [`docs/safeflow-e2e-role-flow.md`](./docs/safeflow-e2e-role-flow.md)
+- E2E runbook: [`docs/safeflow-e2e-producer-consumer-runbook.md`](./docs/safeflow-e2e-producer-consumer-runbook.md)
+- Deploy/config runbook: [`docs/safeflow-deploy-and-config-runbook.md`](./docs/safeflow-deploy-and-config-runbook.md)
+
 ## Core Features & Tech Stack
 
 - **Agent Security Isolation Wallet**: `AgentWallet` and `SessionCap` mechanism implemented in Sui Move.
@@ -57,6 +64,9 @@ This project leverages Sui's unique **Object Model** to solve this challenge by 
 │   └── tailwind.config.ts
 ├── docs/                   # Project documentation
 │   ├── architecture.md     # Technical architecture details
+│   ├── safeflow-e2e-role-flow.md # Full E2E role flow with diagrams
+│   ├── safeflow-e2e-producer-consumer-runbook.md # E2E operation runbook
+│   ├── safeflow-deploy-and-config-runbook.md # Deploy/config runbook
 │   └── hackathon_intro.md  # Hackathon submission introduction
 └── README.md               # This file
 ```
@@ -161,6 +171,8 @@ Open `http://localhost:3000` in your browser. Connect your Sui wallet, input the
 
 You can then enter a payment transaction digest in the **Walrus Evidence Lookup** section to resolve and open the evidence link corresponding to the `walrus_blob_id`.
 You can also query `intentId` in **Producer Intent Observer** to track status (`pending/claimed/executed/failed`) and correlate `txDigest` + `walrus_blob_id`.
+
+For a role-by-role sequence diagram and state machine, see [`docs/safeflow-e2e-role-flow.md`](./docs/safeflow-e2e-role-flow.md).
 
 ## Use Cases (Track Matching)
 

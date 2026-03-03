@@ -86,6 +86,45 @@ This is the wallet air-gap pattern on Sui object model.
 
 ---
 
+## Full E2E Role Flow (Mermaid)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Human as Human Operator
+    participant API as Producer API
+    participant Agent as OpenClaw Agent Runner
+    participant Walrus as Walrus Testnet
+    participant Contract as SafeFlow Move Contract
+    participant Chain as Sui Testnet
+    participant UI as Web Dashboard
+
+    Human->>Chain: create_wallet + create_session_cap + deposit
+    API->>API: create signed PaymentIntent (pending)
+    Agent->>API: GET /v1/intents/next?agentAddress=...
+    API-->>Agent: next pending intent
+    Agent->>Agent: verify signature + TTL + policy
+    Agent->>API: POST /v1/intents/{id}/ack
+    API->>API: pending -> claimed
+
+    Agent->>Walrus: upload reasoning payload
+    alt upload success
+        Walrus-->>Agent: walrus_blob_id
+    else upload failed + degrade enabled
+        Agent->>Agent: fallback:sha256(payload)
+    end
+
+    Agent->>Contract: execute_payment(..., walrus_blob_id)
+    Contract->>Chain: transfer + emit PaymentExecuted
+    Chain-->>Agent: txDigest
+    Agent->>API: POST /v1/intents/{id}/result
+    API->>API: claimed -> executed/failed/expired
+    UI->>API: query intent by intentId
+    UI->>Chain: query tx by digest
+```
+
+---
+
 ## Security Model (Track 1)
 
 1. **Key isolation**
