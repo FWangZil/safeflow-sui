@@ -1,5 +1,5 @@
-export const DEFAULT_WALRUS_PUBLISHER_URL = 'https://publisher.testnet.walrus.space';
-export const DEFAULT_WALRUS_AGGREGATOR_URL = 'https://aggregator.testnet.walrus.space';
+export const DEFAULT_WALRUS_PUBLISHER_URL = 'https://publisher.walrus-testnet.walrus.space';
+export const DEFAULT_WALRUS_AGGREGATOR_URL = 'https://aggregator.walrus-testnet.walrus.space';
 export const DEFAULT_WALRUS_EPOCHS = 5;
 export const DEFAULT_WALRUS_TIMEOUT_MS = 20_000;
 export const DEFAULT_WALRUS_SITE_SUFFIX = '.walrus.site';

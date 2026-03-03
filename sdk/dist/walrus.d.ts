@@ -23,8 +23,8 @@ export interface WalrusUploadResult {
     siteUrl: string | null;
     alreadyCertified?: boolean;
 }
-export declare const DEFAULT_WALRUS_PUBLISHER_URL = "https://publisher.testnet.walrus.space";
-export declare const DEFAULT_WALRUS_AGGREGATOR_URL = "https://aggregator.testnet.walrus.space";
+export declare const DEFAULT_WALRUS_PUBLISHER_URL = "https://publisher.walrus-testnet.walrus.space";
+export declare const DEFAULT_WALRUS_AGGREGATOR_URL = "https://aggregator.walrus-testnet.walrus.space";
 export declare const DEFAULT_WALRUS_EPOCHS = 5;
 export declare const DEFAULT_WALRUS_TIMEOUT_MS = 20000;
 export declare const DEFAULT_WALRUS_SITE_SUFFIX = ".walrus.site";

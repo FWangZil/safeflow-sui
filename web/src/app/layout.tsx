@@ -4,8 +4,10 @@ import './globals.css';
 import { Providers } from './providers';
 
 const inter = Inter({ subsets: ['latin'] });
+const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
 export const metadata: Metadata = {
+    metadataBase: new URL(appUrl),
     title: 'SafeFlow Sui - Agent Air-Gap Wallet',
     description: 'Provide rate-limited, safely air-gapped hot wallets for AI agents on Sui.',
     icons: {

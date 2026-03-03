@@ -90,8 +90,8 @@ bun install
 
 # Specify the Package ID from deployment (and configure Walrus testnet)
 export PACKAGE_ID=<YOUR_PACKAGE_ID>
-export WALRUS_PUBLISHER_URL=https://publisher.testnet.walrus.space
-export WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
+export WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
+export WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
 export WALRUS_EPOCHS=5
 export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
 
@@ -146,7 +146,7 @@ bun install
 
 # Specify the Package ID for the frontend to call Move contracts
 export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
-export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
+export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
 export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
 export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
 

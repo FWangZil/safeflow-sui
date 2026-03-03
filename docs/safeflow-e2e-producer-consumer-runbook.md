@@ -21,8 +21,8 @@ node server.mjs
 PACKAGE_ID=<DEPLOYED_PACKAGE_ID>
 PRODUCER_API_BASE_URL=http://localhost:8787
 PRODUCER_SIGNING_SECRET=dev-secret-change-me
-WALRUS_PUBLISHER_URL=https://publisher.testnet.walrus.space
-WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
+WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
+WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
 WALRUS_EPOCHS=5
 WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
 ```

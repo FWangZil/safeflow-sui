@@ -85,8 +85,8 @@ bun install
 
 # 指定刚部署得到的 Package ID（并配置 Walrus testnet）
 export PACKAGE_ID=<YOUR_PACKAGE_ID>
-export WALRUS_PUBLISHER_URL=https://publisher.testnet.walrus.space
-export WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
+export WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
+export WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
 export WALRUS_EPOCHS=5
 export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
 
@@ -108,7 +108,7 @@ bun install
 
 # 指定刚部署得到的 Package ID，供前端调用 Move 合约
 export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
-export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.testnet.walrus.space
+export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
 export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
 
 # 运行开发服务器

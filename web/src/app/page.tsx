@@ -10,7 +10,7 @@ const CLOCK_OBJECT_ID = '0x6';
 const DEFAULT_MAX_SPEND_PER_SECOND = 1_000_000;
 const DEFAULT_MAX_TOTAL_SPEND = 5_000_000_000;
 const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_WALRUS_AGGREGATOR_URL = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.testnet.walrus.space';
+const DEFAULT_WALRUS_AGGREGATOR_URL = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
 const DEFAULT_WALRUS_SITE_SUFFIX = process.env.NEXT_PUBLIC_WALRUS_SITE_SUFFIX || '.walrus.site';
 const DEFAULT_PRODUCER_API_BASE_URL = process.env.NEXT_PUBLIC_PRODUCER_API_BASE_URL || 'http://localhost:8787';
 

@@ -34,7 +34,7 @@ async function main() {
 
     const aggregatorUrl = getArg('--walrus-aggregator')
         ?? process.env.WALRUS_AGGREGATOR_URL
-        ?? 'https://aggregator.testnet.walrus.space';
+        ?? 'https://aggregator.walrus-testnet.walrus.space';
     const siteSuffix = getArg('--walrus-site-suffix')
         ?? process.env.WALRUS_SITE_SUFFIX
         ?? '.walrus.site';

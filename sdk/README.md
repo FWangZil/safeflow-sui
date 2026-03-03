@@ -42,8 +42,8 @@ const result = await agent.executePaymentWithEvidence({
     reasoning: 'Paying for LLM API call',
     mode: 'success',
     walrusConfig: {
-        publisherUrl: 'https://publisher.testnet.walrus.space',
-        aggregatorUrl: 'https://aggregator.testnet.walrus.space',
+        publisherUrl: 'https://publisher.walrus-testnet.walrus.space',
+        aggregatorUrl: 'https://aggregator.walrus-testnet.walrus.space',
         epochs: 5,
     },
     degradeOnUploadFailure: true,
