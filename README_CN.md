@@ -38,7 +38,11 @@ Agent 可以在几分钟内完成闭环验证：
 
 ## Demo 视频
 
-- YouTube demo: [SafeFlow on Sui: OpenClaw Agent 安全自治支付实战（Walrus 可审计证据)](https://youtu.be/pAd18KE81DI)
+[![观看 Demo - SafeFlow on Sui](https://img.youtube.com/vi/pAd18KE81DI/hqdefault.jpg)](https://www.youtube.com/watch?v=pAd18KE81DI)
+
+- YouTube demo: [SafeFlow on Sui: OpenClaw Agent 安全自治支付实战（Walrus 可审计证据)](https://www.youtube.com/watch?v=pAd18KE81DI)
+
+https://github.com/user-attachments/assets/cfff0f3e-d586-4c85-b3ef-c7aade79fb3c
 
 ## 文档导航
 
