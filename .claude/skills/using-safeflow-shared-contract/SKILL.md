@@ -1,104 +1,81 @@
 ---
 name: using-safeflow-shared-contract
-description: Integrates SafeFlow streaming payments on Sui using the officially deployed shared contract. Use when the user wants to send payments on Sui, set up SafeFlow, or pay a Sui address without deploying their own contract.
+description: Use when running SafeFlow against the shared Sui package with owner-assisted provisioning. Trigger for tasks such as creating an agent execution address with local Sui CLI, asking owner to fund gas and finish web-side wallet/session setup, saving walletId/sessionCapId for autonomous payments, syncing package id to SQL, and running Publish API plus Walrus end-to-end tests.
 ---
 
 # Using SafeFlow Shared Contract
 
-Connect to the officially deployed SafeFlow contract on Sui. No contract deployment needed — run one script to set up and start making streaming payments.
+Operate this as a **test skill** for real-world owner/agent collaboration.
 
-## Prerequisites
+Default test Publish API placeholder:
 
-Install the following tools before running any scripts:
+- `https://PUBLISH_API_BASE_URL_PLACEHOLDER`
 
-1. **sui CLI** — Sui command-line tool:
+## Quick Start (Owner-Handoff, Recommended)
 
-   ```bash
-   # Follow the official guide:
-   # https://docs.sui.io/guides/developer/getting-started/sui-install
-   sui client envs   # verify installation
-   ```
-
-2. **jq** — JSON processor used by the scripts:
-
-   ```bash
-   brew install jq          # macOS
-   apt-get install jq       # Ubuntu/Debian
-   ```
-
-3. **Active Sui address** — must be configured in the sui keystore:
-
-   ```bash
-   sui client active-address   # check current address
-   sui client new-address ed25519  # create one if needed
-   ```
-
-## Quick Start
-
-Run setup once to create all required on-chain resources:
+1. Bootstrap agent context and owner handoff instructions:
 
 ```bash
 cd .claude/skills/using-safeflow-shared-contract/scripts
-chmod +x setup.sh execute_payment.sh
-./setup.sh
+chmod +x ./*.sh
+./bootstrap_owner_handoff.sh \
+  --package-id 0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191 \
+  --portal-url https://SAFEFLOW_OWNER_PORTAL_URL_PLACEHOLDER
 ```
 
-No arguments needed. The official SafeFlow Package ID is already embedded in the script.
+2. Ask owner to:
+- fund agent gas;
+- open the portal URL and finish wallet pre-deposit/config;
+- return with `walletId` and `sessionCapId`.
 
-The setup will:
-
-1. Use your active `sui` address as the wallet owner
-2. Request test SUI from faucet automatically (testnet only)
-3. Create a SafeFlow Wallet on-chain
-4. Create a new agent address and a SessionCap authorizing it to spend
-5. Save all configuration to `.safeflow-config.json`
-
-## Making Payments
-
-After setup, pay any Sui address with:
+3. Save owner-provided runtime config:
 
 ```bash
-./execute_payment.sh --recipient <SUI_ADDRESS> --amount <MIST>
+./save_owner_config.sh \
+  --wallet-id <WALLET_ID> \
+  --session-cap-id <SESSION_CAP_ID>
 ```
 
-- `--recipient`: Destination Sui address (required)
-- `--amount`: Amount in MIST, e.g. `1000000000` = 1 SUI (required)
-- `--blob-id`: Optional Walrus blob ID for audit trail
-
-All other parameters (wallet, session cap, package ID) load automatically from `.safeflow-config.json`.
-
-## Full Example
+4. Execute payment under SafeFlow controls:
 
 ```bash
-cd .claude/skills/using-safeflow-shared-contract/scripts
-
-# One-time setup — no arguments required
-./setup.sh
-
-# Deposit SUI into the SafeFlow wallet to fund payments
-# (replace WALLET_ID with the value printed by setup.sh)
-sui client transfer-sui --to <WALLET_ID> --amount 5000000000 --gas-budget 10000000
-
-# Pay any address
-./execute_payment.sh --recipient 0xabc...123 --amount 1000000000
+./execute_payment.sh --recipient <RECIPIENT_ADDRESS> --amount 1000000
 ```
 
-## Troubleshooting
+## Publish API E2E Test (Intent + Walrus Upload)
 
-**"Insufficient balance" error:**
+When user gives a real API URL, run:
 
-- Fund the SafeFlow wallet: `sui client transfer-sui --to <WALLET_ID> --amount 1000000000 --gas-budget 10000000`
-- Or re-run setup to get faucet funds: `./setup.sh --force`
+```bash
+./test_publish_api_flow.sh \
+  --publish-api-base-url <PUBLISH_API_BASE_URL> \
+  --recipient <RECIPIENT_ADDRESS>
+```
 
-**"Unauthorized" or SessionCap expired:**
+This flow will:
 
-- Re-run: `./setup.sh --force`
+1. call Publish/Producer API health endpoint;
+2. create intent;
+3. run the agent consumer once (`e2e_runner.ts --once`);
+4. rely on SDK `executePaymentWithEvidence` to upload reasoning blob to Walrus (or fallback when degraded);
+5. print final `intentId`, status, digest, and blob id.
 
-**"sui CLI not found":**
+## SQL Sync for Package ID
 
-- Install from: https://docs.sui.io/guides/developer/getting-started/sui-install
+Sync package id for AI runtime lookup:
 
-**"jq not found":**
+```bash
+./sync_package_id_to_sql.sh --driver sqlite
+```
 
-- macOS: `brew install jq`
-- Linux: `apt-get install jq`
+Use `--driver postgres --postgres-dsn <DSN>` when needed.
+
+## Progressive Disclosure References
+
+Load only what is needed:
+
+- Owner handoff workflow: `references/owner-handoff-flow.md`
+- Publish API test workflow: `references/publish-api-test-flow.md`
+- SQL sync details: `references/sql-sync.md`
+- Troubleshooting: `references/troubleshooting.md`
+
