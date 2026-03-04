@@ -23,8 +23,6 @@ style: |
 - Optional extension: **Track 2 - Local God Mode**
 - Stack: `Sui Move` + `Walrus` + `TypeScript SDK` + `Next.js Dashboard`
 
----
-
 ## Problem
 
 OpenClaw agents can execute local commands and browser actions with high privilege.
@@ -37,7 +35,6 @@ If a hot wallet key is exposed to agent runtime:
 
 **Goal:** keep agent useful for autonomous payment, while bounding worst-case loss.
 
----
 
 ## Core Idea
 
@@ -53,7 +50,6 @@ If a hot wallet key is exposed to agent runtime:
 
 This is the wallet air-gap pattern on Sui object model.
 
----
 
 ## Architecture
 
@@ -84,7 +80,6 @@ This is the wallet air-gap pattern on Sui object model.
                                                    └──────────────────┘
 ```
 
----
 
 ## Full E2E Role Flow (Mermaid)
 
@@ -123,8 +118,6 @@ sequenceDiagram
     UI->>Chain: query tx by digest
 ```
 
----
-
 ## Security Model (Track 1)
 
 1. **Key isolation**
@@ -138,8 +131,6 @@ sequenceDiagram
 
 Expected outcome: injection can trigger actions, but cannot bypass on-chain limits.
 
----
-
 ## Demo Storyline (3-4 min)
 
 1. Build/test contract (`sui move test`)
@@ -152,8 +143,6 @@ Expected outcome: injection can trigger actions, but cannot bypass on-chain limi
 
 Narrative: **"Allowed autonomy, denied abuse."**
 
----
-
 ## Why Sui
 
 - Object-centric capability model fits `SessionCap` naturally
@@ -162,25 +151,6 @@ Narrative: **"Allowed autonomy, denied abuse."**
 - Walrus gives decentralized reasoning evidence channel
 
 Compared with account-abstraction-heavy approaches, implementation is simpler and safer by construction.
-
----
-
-## Track Mapping
-
-### Track 1 (Primary)
-
-- Wallet air-gap
-- Prompt-injection blast-radius control
-- Auditable payment intent trail
-
-### Track 2 (Secondary Narrative)
-
-- Local always-on agent can pay for services autonomously
-- Human sets policy once; agent operates within budget envelope
-
-One codebase, two narratives; strongest scoring path remains Track 1.
-
----
 
 ## Current Implementation Status
 
@@ -195,18 +165,6 @@ One codebase, two narratives; strongest scoring path remains Track 1.
 
 Demo is already runnable end-to-end in testnet setup.
 
----
-
-## Next Hardening (Post-Hackathon)
-
-- Add explicit `pause/revoke SessionCap`
-- Add stronger validation rules for `walrus_blob_id`
-- Encrypt agent local key storage
-- Add `SECURITY.md` threat model + incident playbook
-- Add monitoring/alerting for abnormal spending behavior
-
----
-
 ## Closing
 
 **SafeFlow makes autonomous agents economically useful without surrendering wallet safety.**
@@ -214,7 +172,3 @@ Demo is already runnable end-to-end in testnet setup.
 - Secure by contract constraints
 - Transparent by audit traces
 - Practical for OpenClaw-style local operators
-
-### Contact / Repo
-
-`SafeFlow on Sui (OpenClaw Agent Air-Gap Wallet)`
