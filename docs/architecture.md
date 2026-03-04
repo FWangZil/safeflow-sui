@@ -68,6 +68,26 @@
 - Move 合约的 `execute_payment` 会把 `walrus_blob_id` 作为 Event 发射，前端可通过交易 digest 回查该字段并拼接 aggregator/site 链接。
 - 这意味着：链上发生的每一笔支付，都会携带可审计的证据引用（真实 blob 或 fallback hash）。
 
+### 4. OpenClaw Agent 视角（执行者视角）
+
+从 OpenClaw Agent 自身看，SafeFlow 不是“拿到私钥直接转账”，而是一个受控执行循环：
+
+1. **拉取任务**
+   - 周期性调用 `GET /v1/intents/next?agentAddress=...`，只消费分配给自己的 intent。
+2. **本地决策与风控**
+   - 验证 `PaymentIntent` 签名（防篡改）。
+   - 检查 `expiresAtMs`、收款地址白名单、单笔金额上限等本地策略。
+3. **声明执行权**
+   - 调用 `POST /v1/intents/{id}/ack`，将状态从 `pending` 置为 `claimed`，避免重复消费。
+4. **执行支付**
+   - 先上传 reasoning 到 Walrus；若失败且允许降级，使用 `fallback:<sha256>`。
+   - 调用合约 `execute_payment(...)`，最终是否放行由链上规则决定。
+5. **回写结果**
+   - 调用 `POST /v1/intents/{id}/result` 上报 `txDigest` / `walrusBlobId` / 错误码。
+
+这个视角的关键点是：Agent 负责“执行与上报”，不是“定义资金规则”。  
+真正的资金约束在合约和 SessionCap 中，业务意图来源于 Producer API，人类通过 Dashboard 做最终监督。
+
 ## 安全性分析 (The Air-Gap)
 
 在这个架构中，我们实现了完美的 Wallet Air-Gap：

@@ -14,9 +14,31 @@ This project leverages Sui's unique **Object Model** to solve this challenge by 
 2. **Strict Rate Limiting**: The `SessionCap` enforces a "maximum spend per second" and a "total spending limit" for the agent. Even if the agent goes rogue, it cannot instantly drain the wallet.
 3. **Audit Trail with Walrus**: Agent scripts upload reasoning evidence to Walrus (testnet) before executing a payment. A degradation strategy is enabled by default; if the upload fails, it continues the payment with a `fallback:<sha256>` tag, ensuring the process is non-blocking and traceable.
 
+## OpenClaw Agent POV
+
+From the OpenClaw runtime perspective, SafeFlow is a controlled execution loop, not a hot-wallet transfer bot:
+
+1. Poll one assigned payment intent from Producer API.
+2. Verify signature + TTL + local policy (recipient/amount).
+3. ACK intent (`pending -> claimed`) to avoid duplicate consumption.
+4. Execute on-chain payment with `SessionCap` constraints.
+5. Upload reasoning to Walrus (or fallback marker when degraded).
+6. Report final result back to Producer API (`executed/failed/expired`).
+
+Key point: **Agent autonomy is preserved, but treasury policy is never delegated to the agent.**
+
+## Fast Verification Checklist
+
+You can verify the full value proposition in minutes:
+
+1. Check Producer intent status progression (`pending -> claimed -> executed/failed/expired`).
+2. Check on-chain transaction digest and `PaymentExecuted` event fields.
+3. Check `walrus_blob_id` evidence link (or explicit `fallback:` degradation marker).
+4. Confirm rate-limit / total-limit enforcement by contract when inputs are abusive.
+
 ## Documentation Map
 
-- Architecture: [`docs/architecture.md`](./docs/architecture.md)
+- Architecture: [`docs/architecture_en.md`](./docs/architecture_en.md)
 - Full E2E role flow diagram: [`docs/safeflow-e2e-role-flow.md`](./docs/safeflow-e2e-role-flow.md)
 - E2E runbook: [`docs/safeflow-e2e-producer-consumer-runbook.md`](./docs/safeflow-e2e-producer-consumer-runbook.md)
 - Deploy/config runbook: [`docs/safeflow-deploy-and-config-runbook.md`](./docs/safeflow-deploy-and-config-runbook.md)

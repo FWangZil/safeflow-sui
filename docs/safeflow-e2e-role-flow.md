@@ -21,6 +21,22 @@ This document describes the full production-style flow and each role's responsib
 - **Frontend Observer**
   - Displays intent status and links tx + Walrus evidence for human audit.
 
+## OpenClaw Agent POV
+
+From the OpenClaw runner's point of view, the lifecycle is deterministic and policy-driven:
+
+1. Poll `Producer API` for one intent assigned to its `agentAddress`.
+2. Verify intent signature and local policy constraints (TTL, recipient allowlist, max amount).
+3. ACK the intent to move state `pending -> claimed`.
+4. Execute payment via `executePaymentWithEvidence(...)`:
+   - upload reasoning to Walrus when possible;
+   - fallback to `fallback:<sha256>` only when degraded mode is enabled.
+5. Report result (`success/failure`, `txDigest`, `walrusBlobId`) back to API.
+
+The agent does **not** own treasury policy. It only executes within:
+- off-chain intent constraints from producer service, and
+- on-chain constraints from `SessionCap` + Move contract checks.
+
 ## End-to-End Sequence Diagram
 
 ```mermaid
