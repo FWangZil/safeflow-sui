@@ -36,6 +36,10 @@ You can verify the full value proposition in minutes:
 3. Check `walrus_blob_id` evidence link (or explicit `fallback:` degradation marker).
 4. Confirm rate-limit / total-limit enforcement by contract when inputs are abusive.
 
+## Demo
+
+- YouTube demo (coming soon): [https://www.youtube.com/watch?v=YOUR_VIDEO_ID](https://www.youtube.com/watch?v=YOUR_VIDEO_ID)
+
 ## Documentation Map
 
 - Architecture: [`docs/architecture_en.md`](./docs/architecture_en.md)
