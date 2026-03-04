@@ -42,6 +42,25 @@ You can verify the full value proposition in minutes:
 - Full E2E role flow diagram: [`docs/safeflow-e2e-role-flow.md`](./docs/safeflow-e2e-role-flow.md)
 - E2E runbook: [`docs/safeflow-e2e-producer-consumer-runbook.md`](./docs/safeflow-e2e-producer-consumer-runbook.md)
 - Deploy/config runbook: [`docs/safeflow-deploy-and-config-runbook.md`](./docs/safeflow-deploy-and-config-runbook.md)
+- OpenClaw/Agent skill install guide: [`docs/safeflow-agent-skill-install.md`](./docs/safeflow-agent-skill-install.md)
+
+## Install SafeFlow Agent Skill
+
+The standalone skill repository is:
+
+- [`FWangZil/safe-flow-sui-skill`](https://github.com/FWangZil/safe-flow-sui-skill)
+
+OpenClaw and other compatible agent runtimes can install this skill with either command:
+
+```bash
+npx skills add FWangZil/safe-flow-sui-skill
+```
+
+or
+
+```bash
+npx clawhub@latest install safe-flow-sui-skill
+```
 
 ## Core Features & Tech Stack
 

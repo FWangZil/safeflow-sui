@@ -5,7 +5,7 @@ description: Deploys a SafeFlow contract and executes streaming payments on Sui.
 
 # Executing SafeFlow Payments (Self-Deployed Contract)
 
-This skill deploys your own SafeFlow contract and sets up streaming payments on Sui. Use this if you want full control over the contract. For the official shared contract, use the `using-safeflow-shared-contract` skill instead.
+This skill deploys your own SafeFlow contract and sets up streaming payments on Sui. Use this if you want full control over the contract. For the official shared contract, use the `safe-flow-sui-skill` skill instead.
 
 ## Prerequisites
 

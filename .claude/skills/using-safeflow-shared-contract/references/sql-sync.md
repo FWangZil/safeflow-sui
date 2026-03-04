@@ -5,13 +5,13 @@ Use this when AI/runtime looks up active SafeFlow package id from SQL instead of
 ## SQLite (Default)
 
 ```bash
-cd .claude/skills/using-safeflow-shared-contract/scripts
+cd .claude/skills/safe-flow-sui-skill/scripts
 ./sync_package_id_to_sql.sh --driver sqlite
 ```
 
 Default DB path:
 
-- `.claude/skills/using-safeflow-shared-contract/scripts/.safeflow-runtime.db`
+- `.claude/skills/safe-flow-sui-skill/scripts/.safeflow-runtime.db`
 
 Default table schema:
 

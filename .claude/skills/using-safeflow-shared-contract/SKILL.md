@@ -1,5 +1,5 @@
 ---
-name: using-safeflow-shared-contract
+name: safe-flow-sui-skill
 description: Use when running SafeFlow against the shared Sui package with owner-assisted provisioning. Trigger for tasks such as creating an agent execution address with local Sui CLI, asking owner to fund gas and finish web-side wallet/session setup, saving walletId/sessionCapId for autonomous payments, syncing package id to SQL, and running Publish API plus Walrus end-to-end tests.
 ---
 
@@ -16,7 +16,7 @@ Default test Publish API placeholder:
 1. Bootstrap agent context and owner handoff instructions:
 
 ```bash
-cd .claude/skills/using-safeflow-shared-contract/scripts
+cd .claude/skills/safe-flow-sui-skill/scripts
 chmod +x ./*.sh
 ./bootstrap_owner_handoff.sh \
   --package-id 0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191 \
@@ -78,4 +78,3 @@ Load only what is needed:
 - Publish API test workflow: `references/publish-api-test-flow.md`
 - SQL sync details: `references/sql-sync.md`
 - Troubleshooting: `references/troubleshooting.md`
-

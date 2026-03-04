@@ -42,6 +42,25 @@ Agent 可以在几分钟内完成闭环验证：
 - 角色参与的全 E2E 流程图：[`docs/safeflow-e2e-role-flow_cn.md`](./docs/safeflow-e2e-role-flow_cn.md)
 - E2E 运行手册：[`docs/safeflow-e2e-producer-consumer-runbook_cn.md`](./docs/safeflow-e2e-producer-consumer-runbook_cn.md)
 - 部署与配置手册：[`docs/safeflow-deploy-and-config-runbook_cn.md`](./docs/safeflow-deploy-and-config-runbook_cn.md)
+- OpenClaw / Agent Skill 安装指南：[`docs/safeflow-agent-skill-install_cn.md`](./docs/safeflow-agent-skill-install_cn.md)
+
+## 安装 SafeFlow Agent Skill
+
+独立 skill 仓库：
+
+- [`FWangZil/safe-flow-sui-skill`](https://github.com/FWangZil/safe-flow-sui-skill)
+
+OpenClaw 以及其他兼容的 Agent 运行时可使用以下任一命令安装：
+
+```bash
+npx skills add FWangZil/safe-flow-sui-skill
+```
+
+或者：
+
+```bash
+npx clawhub@latest install safe-flow-sui-skill
+```
 
 ## 核心功能与技术栈
 

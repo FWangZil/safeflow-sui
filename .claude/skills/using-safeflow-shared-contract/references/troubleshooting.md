@@ -48,6 +48,6 @@ npx tsx create_intent.ts --agent-address <AGENT> --wallet-id <WALLET> --session-
 Agent key may be missing in local keystore. Re-bootstrap:
 
 ```bash
-cd .claude/skills/using-safeflow-shared-contract/scripts
+cd .claude/skills/safe-flow-sui-skill/scripts
 ./bootstrap_owner_handoff.sh --force-new-agent
 ```

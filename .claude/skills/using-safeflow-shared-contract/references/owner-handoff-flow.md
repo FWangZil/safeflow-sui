@@ -12,7 +12,7 @@ Use this flow for realistic production-like operation where owner controls provi
 1. Bootstrap handoff context:
 
 ```bash
-cd .claude/skills/using-safeflow-shared-contract/scripts
+cd .claude/skills/safe-flow-sui-skill/scripts
 ./bootstrap_owner_handoff.sh \
   --package-id 0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191 \
   --portal-url https://SAFEFLOW_OWNER_PORTAL_URL_PLACEHOLDER

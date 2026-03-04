@@ -15,7 +15,7 @@ This skill treats Publish API integration as a test harness for full E2E:
 ## One Command E2E
 
 ```bash
-cd .claude/skills/using-safeflow-shared-contract/scripts
+cd .claude/skills/safe-flow-sui-skill/scripts
 ./test_publish_api_flow.sh \
   --publish-api-base-url <PUBLISH_API_BASE_URL> \
   --recipient <RECIPIENT_ADDRESS>
