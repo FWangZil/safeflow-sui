@@ -38,7 +38,7 @@ You can verify the full value proposition in minutes:
 
 ## Demo
 
-- YouTube demo (coming soon): [https://www.youtube.com/watch?v=YOUR_VIDEO_ID](https://www.youtube.com/watch?v=YOUR_VIDEO_ID)
+- YouTube demo: [SafeFlow on Sui: Secure Autonomous Payments for OpenClaw Agents (Walrus-Auditable E2E Demo)](https://youtu.be/pAd18KE81DI)
 
 ## Documentation Map
 

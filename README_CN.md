@@ -36,6 +36,10 @@ Agent 可以在几分钟内完成闭环验证：
 3. 查看 `walrus_blob_id` 证据链接（或明确的 `fallback:` 降级标记）。
 4. 用超限输入验证合约的速率限制与总额度限制是否生效。
 
+## Demo 视频
+
+- YouTube demo: [SafeFlow on Sui: OpenClaw Agent 安全自治支付实战（Walrus 可审计证据)](https://youtu.be/pAd18KE81DI)
+
 ## 文档导航
 
 - 架构说明：[`docs/architecture.md`](./docs/architecture.md)
