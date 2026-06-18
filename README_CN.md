@@ -13,6 +13,20 @@ SafeFlow (Sui Edition) 是面向 **AI Agent（如 OpenClaw）** 的链上 checko
 1. **Native gasless stablecoin**：简单 allowlisted stablecoin 转账走 Sui native gasless，适合普通商户 P2P checkout。
 2. **Sponsored AgentPay Guard**：需要 `SessionCap` 限额、总额、过期时间或 sponsor fee reimbursement 时，Producer API 构造 sponsored `execute_payment<T>` / `execute_payment_with_fee<T>`，Agent 追加签名并双签提交。
 
+## 黑客松期间新增功能 / Redesign 范围
+
+SafeFlow 是一个已有的 Sui 项目，本次 **SuiOverflow 2026** 提交不是把旧版 demo 原样提交，而是在黑客松期间完成一个 **well-defined new feature and redesign**：把早期 `SessionCap` 钱包 demo 迭代成完整的 Gasless Checkout + AgentPay Guard 产品。
+
+黑客松期间完成的新功能与 redesign 包括：
+
+- 基于 Postgres 的 merchant checkout session 与 payment intent；
+- `executionRail=auto`，自动判断 Sui native gasless stablecoin transfer 与 sponsored AgentPay Guard；
+- Sponsor 支付 guarded execution gas，并支持同稳定币手续费补偿；
+- 重新设计的 Web console：operator setup、merchant checkout/status、public checkout、audit trail；
+- 更新后的 Agent runner 与可复用 SafeFlow Sui skill，适配新的 Producer API flow。
+
+因此，本项目满足 SuiOverflow 2026 对“必须是 Sui 上的新项目，或 established project 在 hackathon 期间实现 well-defined new feature or redesign”的要求。
+
 默认稳定币为 Circle Sui testnet USDC：
 
 ```text
@@ -45,6 +59,7 @@ https://github.com/user-attachments/assets/cfff0f3e-d586-4c85-b3ef-c7aade79fb3c
 ## 文档导航
 
 - 架构说明：[`docs/architecture.md`](./docs/architecture.md)
+- 黑客松介绍与范围：[`docs/hackathon_intro.md`](./docs/hackathon_intro.md)
 - 多角色 E2E 流程：[`docs/safeflow-e2e-role-flow_cn.md`](./docs/safeflow-e2e-role-flow_cn.md)
 - E2E 运行手册：[`docs/safeflow-e2e-producer-consumer-runbook_cn.md`](./docs/safeflow-e2e-producer-consumer-runbook_cn.md)
 - 部署与配置手册：[`docs/safeflow-deploy-and-config-runbook_cn.md`](./docs/safeflow-deploy-and-config-runbook_cn.md)
@@ -200,6 +215,8 @@ bun run dev
 打开 `http://localhost:3000`。控制台可创建 merchant checkout、查看 public checkout 页面、跟踪 session 状态，并在 audit trail 中查看 `txDigest` 与 Walrus evidence。
 
 ## Track 匹配
+
+Hackathon eligibility：SafeFlow 是 Sui 项目，本次 SuiOverflow 2026 提交的核心是黑客松期间完成的 Gasless Checkout + AgentPay Guard 明确定义新功能与 redesign。
 
 1. **Safety & Security**：`SessionCap`、Move Object capability、Walrus evidence 与 Postgres intent 状态机共同限制 Agent 越权与提示词注入风险。
 2. **Local God Mode**：OpenClaw Agent 在本地运行，自动处理 checkout intent；简单交易无需 Agent SUI gas，复杂交易由 sponsor 支付执行 gas。

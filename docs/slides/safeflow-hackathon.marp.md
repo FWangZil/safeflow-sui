@@ -23,6 +23,18 @@ style: |
 - Optional extension: **Track 2 - Local God Mode**
 - Stack: `Sui native gasless` + `Sui Move` + `Walrus` + `Producer API` + `Next.js Console`
 
+## SuiOverflow 2026 Scope
+
+This is an established Sui project with a **well-defined new feature and redesign** built for SuiOverflow 2026.
+
+New hackathon work:
+
+- Redesign from `SessionCap` wallet demo to checkout product
+- `executionRail=auto`: native gasless or sponsored guard
+- Postgres Producer API for sessions, intents, allowances, sponsor attempts
+- Sponsor stablecoin fee reimbursement
+- New web console and public checkout flow
+
 ## Problem
 
 OpenClaw agents can execute local commands and browser actions with high privilege.

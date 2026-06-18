@@ -14,6 +14,18 @@ Current execution is split into two rails:
 2. **Sponsored AgentPay Guard**: complex payments use `AgentWallet<T>` + `SessionCap` and a sponsor-paid `execute_payment<T>` / `execute_payment_with_fee<T>` transaction.
 3. **Walrus audit trail**: agent scripts upload reasoning evidence to Walrus before execution, or record `fallback:<sha256>` when degraded mode is enabled.
 
+## Hackathon Scope
+
+SafeFlow is an established Sui project, and this **SuiOverflow 2026** submission is a **well-defined new feature and redesign** implemented during the hackathon. The hackathon work turns the earlier `SessionCap` wallet demo into a full checkout product:
+
+- merchant checkout sessions backed by Postgres;
+- automatic rail selection between Sui native gasless stablecoin transfer and sponsored AgentPay Guard;
+- sponsor-paid guarded execution with optional same-coin stablecoin fee reimbursement;
+- redesigned web console with operator setup, merchant checkout/status, public checkout, and audit trail views;
+- updated agent runner and reusable SafeFlow Sui skill for the new Producer API flow.
+
+The submitted work is therefore a Sui-based project with a clear new feature/redesign surface built for SuiOverflow 2026, not a resubmission of the earlier demo as-is.
+
 ## OpenClaw Agent POV
 
 From the OpenClaw runtime perspective, SafeFlow is a controlled checkout execution loop, not a hot-wallet transfer bot:
@@ -52,6 +64,7 @@ https://github.com/user-attachments/assets/cfff0f3e-d586-4c85-b3ef-c7aade79fb3c
 ## Documentation Map
 
 - Architecture: [`docs/architecture_en.md`](./docs/architecture_en.md)
+- Hackathon intro/scope: [`docs/hackathon_intro.md`](./docs/hackathon_intro.md)
 - Full E2E role flow diagram: [`docs/safeflow-e2e-role-flow.md`](./docs/safeflow-e2e-role-flow.md)
 - E2E runbook: [`docs/safeflow-e2e-producer-consumer-runbook.md`](./docs/safeflow-e2e-producer-consumer-runbook.md)
 - Deploy/config runbook: [`docs/safeflow-deploy-and-config-runbook.md`](./docs/safeflow-deploy-and-config-runbook.md)
@@ -258,7 +271,9 @@ For a role-by-role sequence diagram and state machine, see [`docs/safeflow-e2e-r
 
 ## Use Cases (Track Matching)
 
-This project fits perfectly with two themes of the **Sui OpenClaw Hackathon**:
+This project fits perfectly with two themes of **SuiOverflow 2026**:
+
+Hackathon eligibility: SafeFlow is a Sui project with a well-defined new feature/redesign completed for SuiOverflow 2026, namely the Gasless Checkout + AgentPay Guard product layer described above.
 
 1. **Safety & Security (Track 1)**:
    By leveraging Move's Object capabilities and Walrus's decentralized storage, we've built an **injection-proof, traceable, and run-proof** agent isolation wallet. Humans maintain absolute control and auditing rights over funds.
