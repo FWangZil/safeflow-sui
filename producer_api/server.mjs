@@ -8,6 +8,7 @@ import { decodeSuiPrivateKey } from '@mysten/sui.js/cryptography';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { toB64 } from '@mysten/sui.js/utils';
+import { createChainReadService } from './lib/chain.mjs';
 
 export const DEFAULT_COIN_TYPE = '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC';
 export const DEFAULT_CURRENCY_SYMBOL = 'USDC';
@@ -24,9 +25,14 @@ export function createServerApp({
     store,
     config,
     sponsorService,
+    chainService,
 }) {
     const defaultCoinType = config.defaultCoinType ?? DEFAULT_COIN_TYPE;
     const resolvedConfig = {
+        // Sui events + Walrus blobs are the source of truth; when enabled, agent
+        // results are verified against chain before they are written as executed.
+        requireOnchainVerify: config.requireOnchainVerify ?? Boolean(chainService),
+        adminToken: config.adminToken ?? null,
         appUrl: config.appUrl ?? 'http://localhost:3000',
         defaultCoinType,
         defaultCurrencySymbol: config.defaultCurrencySymbol ?? DEFAULT_CURRENCY_SYMBOL,
@@ -42,7 +48,7 @@ export function createServerApp({
 
     return createServer(async (req, res) => {
         try {
-            await handleRequest(req, res, store, resolvedConfig, sponsorService);
+            await handleRequest(req, res, store, resolvedConfig, sponsorService, chainService);
         } catch (error) {
             const status = typeof error?.status === 'number' ? error.status : 500;
             const message = typeof error?.message === 'string' ? error.message : 'Internal server error';
@@ -54,7 +60,7 @@ export function createServerApp({
     });
 }
 
-async function handleRequest(req, res, store, config, sponsorService) {
+async function handleRequest(req, res, store, config, sponsorService, chainService) {
     setCorsHeaders(res);
 
     if (req.method === 'OPTIONS') {
@@ -153,8 +159,16 @@ async function handleRequest(req, res, store, config, sponsorService) {
     const matchResult = pathname.match(/^\/v1\/intents\/([^/]+)\/result$/);
     if (matchResult && req.method === 'POST') {
         const body = await parseJsonBody(req);
-        const intent = await reportIntentResult(store, matchResult[1], body);
+        const intent = await reportIntentResult(store, matchResult[1], body, chainService, config);
         sendJson(res, 200, { intent });
+        return;
+    }
+
+    if (pathname === '/v1/admin/reconcile' && req.method === 'POST') {
+        requireAdminAuth(req, config);
+        const body = await parseJsonBody(req);
+        const report = await reconcileFromChain(store, chainService, body);
+        sendJson(res, 200, { report });
         return;
     }
 
@@ -374,7 +388,7 @@ async function sponsorIntent(store, sponsorService, config, intentId, body) {
     }
 }
 
-async function reportIntentResult(store, intentId, body) {
+async function reportIntentResult(store, intentId, body, chainService, config) {
     validateResultInput(body);
     const intent = await store.getIntent(intentId);
     if (!intent) {
@@ -383,13 +397,53 @@ async function reportIntentResult(store, intentId, body) {
     if (intent.agentAddress !== body.agentAddress) {
         throw httpError(403, 'agentAddress does not match intent.');
     }
+
+    const finishedAtMs = Number.isFinite(body.finishedAt) ? body.finishedAt : Date.now();
+
+    // Source of truth is the chain: only accept a success result if the reported
+    // txDigest is backed by a matching on-chain PaymentExecuted event (or, for the
+    // native gasless rail, a matching balance transfer). The on-chain walrus_blob_id
+    // wins over the agent-reported value.
+    if (body.success && config?.requireOnchainVerify && chainService) {
+        const verification = await chainService.verifyPaymentExecuted({
+            txDigest: body.txDigest,
+            expected: {
+                executionRail: intent.executionRail,
+                recipient: intent.recipient,
+                amountAtomic: intent.amountAtomic,
+                coinType: intent.coinType,
+                walletId: intent.walletId ?? undefined,
+                walrusBlobId: intent.walrusBlobId ?? body.walrusBlobId,
+            },
+        });
+        if (!verification.ok) {
+            return store.reportIntentResult(intentId, {
+                success: false,
+                txDigest: body.txDigest,
+                walrusBlobId: body.walrusBlobId,
+                errorCode: 'onchain_verification_failed',
+                errorMessage: `On-chain verification failed: ${verification.mismatchReason}. `
+                    + `Agent reported txDigest=${body.txDigest ?? 'none'}, walrusBlobId=${body.walrusBlobId ?? 'none'}.`,
+                finishedAtMs,
+            });
+        }
+        return store.reportIntentResult(intentId, {
+            success: true,
+            txDigest: body.txDigest,
+            walrusBlobId: verification.onchainWalrusBlobId ?? body.walrusBlobId,
+            errorCode: undefined,
+            errorMessage: undefined,
+            finishedAtMs,
+        });
+    }
+
     return store.reportIntentResult(intentId, {
         success: body.success,
         txDigest: body.txDigest,
         walrusBlobId: body.walrusBlobId,
         errorCode: body.errorCode,
         errorMessage: body.errorMessage,
-        finishedAtMs: Number.isFinite(body.finishedAt) ? body.finishedAt : Date.now(),
+        finishedAtMs,
     });
 }
 
@@ -622,6 +676,94 @@ async function requireMerchantAuth(req, store) {
     return merchant;
 }
 
+function requireAdminAuth(req, config) {
+    if (!config?.adminToken) {
+        throw httpError(503, 'Admin operations are disabled (PRODUCER_ADMIN_TOKEN not set).');
+    }
+    const token = req.headers['x-admin-token'];
+    if (typeof token !== 'string' || token.length === 0) {
+        throw httpError(401, 'Unauthorized: missing x-admin-token.');
+    }
+    const provided = Buffer.from(token);
+    const expected = Buffer.from(config.adminToken);
+    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+        throw httpError(401, 'Unauthorized: invalid x-admin-token.');
+    }
+}
+
+/**
+ * Rebuild / repair DB terminal state from on-chain PaymentExecuted events.
+ *
+ * This proves Postgres is a disposable projection: even if intent rows lose their
+ * executed status / txDigest / walrusBlobId, they can be recovered from chain.
+ * Events carry no intent_id, so each event is matched to an intent by
+ * recipient + amount + wallet_id.
+ */
+export async function reconcileFromChain(store, chainService, body = {}) {
+    if (!chainService) {
+        throw httpError(503, 'Chain service is not configured.');
+    }
+    const maxPages = Number.isFinite(body.maxPages) ? Math.max(1, Math.min(100, body.maxPages)) : 20;
+    const pageSize = Number.isFinite(body.pageSize) ? Math.max(1, Math.min(100, body.pageSize)) : 50;
+
+    const report = {
+        scannedEvents: 0,
+        repaired: 0,
+        alreadyConsistent: 0,
+        unmatched: 0,
+        pages: 0,
+        details: [],
+    };
+
+    let cursor = body.cursor ?? null;
+    for (let page = 0; page < maxPages; page += 1) {
+        const result = await chainService.queryPaymentExecutedEvents({ cursor, limit: pageSize });
+        const events = Array.isArray(result?.data) ? result.data : [];
+        report.pages += 1;
+        for (const event of events) {
+            report.scannedEvents += 1;
+            const fields = event.parsedJson ?? {};
+            const recipient = fields.recipient;
+            const amountAtomic = fields.amount;
+            const walletId = fields.wallet_id;
+            const walrusBlobId = fields.walrus_blob_id;
+            const txDigest = event?.id?.txDigest ?? null;
+
+            const intent = await store.findReconcilableIntent({ recipient, amountAtomic, walletId });
+            if (!intent) {
+                report.unmatched += 1;
+                continue;
+            }
+
+            const consistent = intent.status === 'executed'
+                && intent.txDigest === txDigest
+                && intent.walrusBlobId === walrusBlobId;
+            if (consistent) {
+                report.alreadyConsistent += 1;
+                continue;
+            }
+
+            await store.reportIntentResult(intent.intentId, {
+                success: true,
+                txDigest,
+                walrusBlobId,
+                errorCode: undefined,
+                errorMessage: undefined,
+                finishedAtMs: Date.now(),
+            });
+            report.repaired += 1;
+            report.details.push({ intentId: intent.intentId, txDigest, walrusBlobId });
+        }
+
+        cursor = result?.nextCursor ?? null;
+        if (!result?.hasNextPage || !cursor) {
+            break;
+        }
+    }
+
+    return report;
+}
+
 export function buildIntentSignaturePayload(intent) {
     return {
         intentId: intent.intentId,
@@ -722,6 +864,18 @@ export function createInMemoryStore() {
         },
         async getIntent(intentId) {
             return clone(intents.find((intent) => intent.intentId === intentId));
+        },
+        async findReconcilableIntent({ recipient, amountAtomic, walletId }) {
+            const intent = intents
+                .filter((candidate) => candidate.recipient === recipient
+                    && Number(candidate.amountAtomic) === Number(amountAtomic)
+                    && (!walletId || candidate.walletId === walletId))
+                .sort((a, b) => {
+                    const aExecuted = a.status === 'executed' ? 1 : 0;
+                    const bExecuted = b.status === 'executed' ? 1 : 0;
+                    return aExecuted - bExecuted || a.createdAtMs - b.createdAtMs;
+                })[0];
+            return clone(intent ?? null);
         },
         async listIntents({ agentAddress, status, limit }) {
             let rows = intents.slice();
@@ -877,6 +1031,22 @@ export function createPostgresStore(connectionString) {
         },
         async getIntent(intentId) {
             const { rows } = await pool.query('select * from payment_intents where id = $1 limit 1', [intentId]);
+            return rows[0] ? mapIntent(rows[0]) : null;
+        },
+        async findReconcilableIntent({ recipient, amountAtomic, walletId }) {
+            const clauses = ['recipient = $1', 'amount_atomic = $2'];
+            const values = [recipient, amountAtomic];
+            if (walletId) {
+                values.push(walletId);
+                clauses.push(`wallet_id = $${values.length}`);
+            }
+            const { rows } = await pool.query(
+                `select * from payment_intents
+                 where ${clauses.join(' and ')}
+                 order by (status = 'executed') asc, created_at_ms asc
+                 limit 1`,
+                values,
+            );
             return rows[0] ? mapIntent(rows[0]) : null;
         },
         async listIntents({ agentAddress, status, limit }) {
@@ -1317,7 +1487,7 @@ function httpError(status, message) {
 function setCorsHeaders(res) {
     res.setHeader('access-control-allow-origin', '*');
     res.setHeader('access-control-allow-methods', 'GET,POST,OPTIONS');
-    res.setHeader('access-control-allow-headers', 'content-type,x-api-key');
+    res.setHeader('access-control-allow-headers', 'content-type,x-api-key,x-admin-token');
 }
 
 function sendJson(res, status, payload) {
@@ -1330,10 +1500,22 @@ function readServerConfigFromEnv() {
     if (!process.env.DATABASE_URL) {
         throw new Error('DATABASE_URL is required.');
     }
+    const packageId = process.env.PACKAGE_ID;
+    const network = process.env.SUI_NETWORK ?? 'testnet';
+    // On-chain verification defaults on when a package id is configured; can be
+    // forced off (e.g. for degraded demos) with REQUIRE_ONCHAIN_VERIFY=false.
+    const requireOnchainVerify = process.env.REQUIRE_ONCHAIN_VERIFY
+        ? process.env.REQUIRE_ONCHAIN_VERIFY !== 'false'
+        : Boolean(packageId);
+    const chainService = packageId ? createChainReadService({ packageId, network }) : null;
+
     return {
         port: Number.parseInt(process.env.PRODUCER_API_PORT ?? '8787', 10),
         store: createPostgresStore(process.env.DATABASE_URL),
+        chainService,
         config: {
+            requireOnchainVerify,
+            adminToken: process.env.PRODUCER_ADMIN_TOKEN ?? null,
             appUrl: process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? 'http://localhost:3000',
             defaultCoinType: process.env.DEFAULT_COIN_TYPE ?? DEFAULT_COIN_TYPE,
             defaultCurrencySymbol: process.env.DEFAULT_CURRENCY_SYMBOL ?? DEFAULT_CURRENCY_SYMBOL,
@@ -1347,19 +1529,20 @@ function readServerConfigFromEnv() {
             sponsorFeeRecipient: process.env.SPONSOR_FEE_RECIPIENT ?? null,
         },
         sponsorService: createSuiSponsorService({
-            packageId: process.env.PACKAGE_ID,
+            packageId,
             sponsorSecretKey: process.env.SPONSOR_SECRET_KEY,
-            network: process.env.SUI_NETWORK ?? 'testnet',
+            network,
             maxGasBudget: Number.parseInt(process.env.SPONSOR_MAX_GAS_BUDGET ?? '10000000', 10),
         }),
     };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-    const { port, store, config, sponsorService } = readServerConfigFromEnv();
-    const server = createServerApp({ store, config, sponsorService });
+    const { port, store, config, sponsorService, chainService } = readServerConfigFromEnv();
+    const server = createServerApp({ store, config, sponsorService, chainService });
     server.listen(port, () => {
         console.log(`[producer-api] listening on http://localhost:${port}`);
-        console.log('[producer-api] storage: postgres');
+        console.log('[producer-api] storage: postgres (projection of Sui events + Walrus)');
+        console.log(`[producer-api] on-chain verification: ${config.requireOnchainVerify ? 'on' : 'off'}`);
     });
 }

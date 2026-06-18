@@ -1,3 +1,10 @@
+-- These tables are a coordination cache and a *rebuildable projection* of
+-- on-chain truth, not the system of record. Settlement truth is the Sui
+-- `agent_wallet::wallet::PaymentExecuted` event; audit evidence is the Walrus
+-- blob. Terminal intent state (status / tx_digest / walrus_blob_id) can be
+-- re-derived from chain via POST /v1/admin/reconcile or
+-- scripts/reconcile_from_chain.mjs.
+
 create table if not exists merchants (
     id text primary key,
     name text not null,

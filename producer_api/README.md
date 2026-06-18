@@ -1,6 +1,12 @@
 # SafeFlow Producer API
 
-Postgres-backed checkout and intent API for the gasless AgentPay Guard demo.
+Checkout and intent API for the gasless AgentPay Guard demo.
+
+Settlement truth is on Sui (the `agent_wallet::wallet::PaymentExecuted` event) and
+audit evidence is on Walrus. **Postgres here is a verifiable, rebuildable
+projection of that truth, not the system of record** — results are verified
+against chain before being written as `executed`, and terminal state can be
+rebuilt from chain (see `POST /v1/admin/reconcile`).
 
 Checkout sessions support two execution rails:
 
@@ -47,6 +53,8 @@ bun run dev
 - `SPONSOR_FEE_RECIPIENT`: defaults to the sponsor key address when omitted
 - `NATIVE_GASLESS_COIN_TYPES`: defaults to `DEFAULT_COIN_TYPE`
 - `SUI_NETWORK`: `testnet`
+- `REQUIRE_ONCHAIN_VERIFY`: verify `result` success against chain before writing `executed`; defaults on when `PACKAGE_ID` is set, set to `false` to disable
+- `PRODUCER_ADMIN_TOKEN`: required to call `POST /v1/admin/reconcile` (sent as `x-admin-token`); reconcile is disabled when unset
 
 ## Endpoints
 
@@ -58,6 +66,7 @@ bun run dev
 - `POST /v1/intents/{intentId}/result`
 - `GET /v1/intents/{intentId}`
 - `GET /v1/intents?agentAddress=...&status=...&limit=...`
+- `POST /v1/admin/reconcile` (requires `x-admin-token`) — rebuild/repair terminal intent state from on-chain `PaymentExecuted` events
 - `GET /health`
 
 `POST /v1/intents` remains as a compatibility path for local CLI/demo commands and accepts either `amountAtomic` or legacy `amountMist`.
@@ -74,6 +83,20 @@ Merchant-created endpoints (`POST /v1/checkout/sessions` and compatibility `POST
 6. Agent signs the returned transaction bytes and submits the transaction with agent + sponsor signatures.
 
 The sponsor still needs SUI for gas. The stablecoin fee is reimbursement/revenue collected inside the guarded payment, not a replacement for the protocol gas coin.
+
+7. Agent reports the result to `POST /v1/intents/{intentId}/result`. When `REQUIRE_ONCHAIN_VERIFY` is on, the server fetches the reported `txDigest` and only marks the intent `executed` if the on-chain `PaymentExecuted` event (or, for native gasless, a balance change) matches the intent's recipient / amount / wallet / `walrus_blob_id`. The on-chain `walrus_blob_id` overrides the agent-reported value. A mismatch is stored as `failed` with `error_code=onchain_verification_failed`.
+
+## Rebuild Postgres from chain
+
+Because settlement truth is on Sui and evidence is on Walrus, the DB is disposable. To repair or rebuild terminal intent state from chain:
+
+```bash
+# via the admin endpoint
+curl -X POST $BASE_URL/v1/admin/reconcile -H "x-admin-token: $PRODUCER_ADMIN_TOKEN"
+
+# or standalone
+DATABASE_URL=... PACKAGE_ID=0x... node scripts/reconcile_from_chain.mjs
+```
 
 ## Tests
 

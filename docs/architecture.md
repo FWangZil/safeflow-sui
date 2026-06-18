@@ -61,9 +61,21 @@ Producer API 默认接受 `executionRail: "auto"`：
 ### 0. Producer API（Checkout / Intent / Sponsor）
 
 - 创建 merchant checkout session 和关联的 `PaymentIntent`。
-- 使用 Postgres 存储 merchant、agent allowance、checkout session、payment intent、sponsor attempt。
+- 使用 Postgres 存储协调态：merchant、agent allowance、checkout session、payment intent、sponsor attempt。
 - 对 intent 签名，提供拉取、ACK、回写结果和 sponsor 接口。
 - 在 `auto` 模式下根据 coin allowlist 与 guard 需求自动决定 rail。
+
+#### 真相源：Sui + Walrus，Postgres 是可重建投影
+
+结算真相在 Sui（`agent_wallet::wallet::PaymentExecuted` 事件），审计证据在 Walrus。
+**Postgres 是这份真相的可验证、可重建投影，而非 system of record。** 两个机制保证这点：
+
+- **结果核验**（`POST /v1/intents/:id/result`）：`success` 结果只有在上报的 `txDigest`
+  被链上核验、且与 intent 期望的 recipient / amount / wallet / `walrus_blob_id` 一致后，
+  才会写成 `executed`（sponsored guard 走 `PaymentExecuted` 事件，native gasless 走余额变动）。
+  链上 `walrus_blob_id` 覆盖 agent 自报值。开关 `REQUIRE_ONCHAIN_VERIFY`（设了 `PACKAGE_ID` 时默认开）。
+- **重建 / reconcile**（`POST /v1/admin/reconcile` 或 `scripts/reconcile_from_chain.mjs`）：
+  回放 `PaymentExecuted` 事件，从链上修复/重建 intent 终态，证明 DB 可丢弃。
 
 ### 1. Native Gasless Rail
 

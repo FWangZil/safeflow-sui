@@ -25,9 +25,26 @@ Producer API defaults to `executionRail: "auto"`:
 ### 0. Producer API
 
 - Creates merchant checkout sessions and linked `PaymentIntent` records.
-- Stores state in Postgres: merchants, agent allowances, checkout sessions, payment intents, sponsor attempts.
+- Stores coordination state in Postgres: merchants, agent allowances, checkout sessions, payment intents, sponsor attempts.
 - Signs intents and exposes polling, ACK, result, and sponsor APIs.
 - Resolves `executionRail=auto` before the agent executes.
+
+#### Source of truth: Sui + Walrus, Postgres is a projection
+
+Settlement truth lives on Sui (the `agent_wallet::wallet::PaymentExecuted` event)
+and audit evidence lives on Walrus. **Postgres is a verifiable, rebuildable
+projection of that truth — not the system of record.** Two mechanisms enforce this:
+
+- **Result verification** (`POST /v1/intents/:id/result`): a `success` result is
+  only written as `executed` after the reported `txDigest` is confirmed on-chain
+  against the intent's expected recipient / amount / wallet / `walrus_blob_id`
+  (for the sponsored guard rail, via the `PaymentExecuted` event; for native
+  gasless, via a matching balance change). The on-chain `walrus_blob_id` wins over
+  the agent-reported value. Toggle with `REQUIRE_ONCHAIN_VERIFY` (defaults on when
+  `PACKAGE_ID` is set).
+- **Reconcile / rebuild** (`POST /v1/admin/reconcile`, or
+  `scripts/reconcile_from_chain.mjs`): replays `PaymentExecuted` events to repair
+  or rebuild terminal intent state from chain, proving the DB is disposable.
 
 ### 1. Native Gasless Rail
 
@@ -100,3 +117,20 @@ The agent executes policy; it does not define treasury policy.
 - Shared/owned object separation maps to custody versus execution permission.
 - Sui native gasless stablecoin support covers the simple checkout path without forcing every payment through a custom sponsor.
 - PTB support makes sponsored guarded execution composable for advanced AgentPay flows.
+
+## Contract Provenance
+
+The Move contract is not a black box and depends only on the official Sui
+framework (no third-party Move libraries). Source: [`agent_wallet/`](../agent_wallet)
+(`agent_wallet::wallet`), buildable with `sui move build --build-env testnet`.
+
+Deployed package: `PACKAGE_ID=0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191` (testnet).
+
+> ⚠️ **Known source/deployment drift.** The in-repo source is *ahead* of the
+> deployed `0xcc76…` package: source defines `execute_payment_with_fee` /
+> `SponsorFeePaid`, but the deployed package exposes only `execute_payment`
+> (verified via `sui_getNormalizedMoveModule`). `PaymentExecuted` event fields
+> match exactly. Consequence: the default flow (`SPONSOR_FEE_BPS=0`, which uses
+> `execute_payment`) works against `0xcc76…`; enabling an on-chain sponsor fee
+> (`SPONSOR_FEE_BPS>0`, which calls `execute_payment_with_fee`) requires
+> **republishing `agent_wallet` and updating `PACKAGE_ID`** everywhere.
