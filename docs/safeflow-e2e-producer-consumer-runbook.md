@@ -1,78 +1,121 @@
 # SafeFlow E2E Producer/Consumer Runbook
 
-This runbook demonstrates the full real-world flow:
+This runbook demonstrates the current full-chain demo:
 
-`Producer API -> Agent poll/ack/execute -> on-chain tx + Walrus proof -> API result state`.
+`Merchant checkout -> Producer API -> Agent poll/ack/evidence -> native gasless or sponsored guard tx -> API result`.
 
-For role responsibilities and full sequence/state diagrams, see:
-[`docs/safeflow-e2e-role-flow.md`](./safeflow-e2e-role-flow.md)
+For role diagrams, see [`safeflow-e2e-role-flow.md`](./safeflow-e2e-role-flow.md).
 
-## 1) Start Producer API
+## 1. Start Producer API
+
+Producer API is Postgres-backed.
 
 ```bash
 cd producer_api
+bun install
+
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/safeflow
 export PRODUCER_SIGNING_SECRET=dev-secret-change-me
-# export PRODUCER_API_KEY=optional-write-key
-node server.mjs
+export PACKAGE_ID=<SAFEFLOW_PACKAGE_ID>
+export SPONSOR_SECRET_KEY=<SUI_SPONSOR_PRIVATE_KEY>
+export SPONSOR_FEE_BPS=100
+export SPONSOR_MIN_FEE_ATOMIC=0
+export NATIVE_GASLESS_COIN_TYPES=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+
+bun run migrate
+bun run seed:demo
+bun run dev
 ```
 
-## 2) Prepare Agent Runner Env
+`seed:demo` prints the merchant API key once.
 
-`agent_scripts/.env` should include:
-
-```bash
-PACKAGE_ID=<DEPLOYED_PACKAGE_ID>
-PRODUCER_API_BASE_URL=http://localhost:8787
-PRODUCER_SIGNING_SECRET=dev-secret-change-me
-WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
-WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
-WALRUS_EPOCHS=5
-WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
-```
-
-## 3) Create a Payment Intent
+## 2. Prepare Agent Runner Env
 
 ```bash
 cd agent_scripts
-npx tsx create_intent.ts \
-  --agent-address <AGENT_ADDRESS> \
-  --wallet-id <WALLET_ID> \
-  --session-cap-id <SESSION_CAP_ID> \
-  --recipient <RECIPIENT_ADDRESS> \
-  --amount-mist 1000000 \
-  --reason "demo e2e payment"
+bun install
+
+export PACKAGE_ID=<SAFEFLOW_PACKAGE_ID>
+export PRODUCER_API_BASE_URL=http://localhost:8787
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
+export WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+export WALRUS_EPOCHS=5
+export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
 ```
 
-## 4) Start Agent Consumer Runner
+The runner reads `agent_scripts/.agent_key.json`; run the existing agent key bootstrap if the file is missing.
+
+## 3. Create Checkout Session
+
+Simple allowlisted stablecoin checkout. Producer API auto-selects `native_gasless`.
+
+```bash
+curl -X POST http://localhost:8787/v1/checkout/sessions \
+  -H "content-type: application/json" \
+  -H "x-api-key: <MERCHANT_API_KEY>" \
+  -d '{
+    "merchantOrderId": "order-demo-native",
+    "executionRail": "auto",
+    "amountAtomic": 1000000,
+    "currencySymbol": "USDC",
+    "reason": "demo native gasless checkout"
+  }'
+```
+
+Guarded AgentPay checkout. Producer API resolves to `sponsored_guard`.
+
+```bash
+curl -X POST http://localhost:8787/v1/checkout/sessions \
+  -H "content-type: application/json" \
+  -H "x-api-key: <MERCHANT_API_KEY>" \
+  -d '{
+    "merchantOrderId": "order-demo-guard",
+    "executionRail": "auto",
+    "requiresGuard": true,
+    "amountAtomic": 1000000,
+    "currencySymbol": "USDC",
+    "reason": "demo guarded checkout"
+  }'
+```
+
+## 4. Run Agent Once
 
 ```bash
 cd agent_scripts
-npx tsx e2e_runner.ts --poll-ms 3000
+bun run typecheck
+bunx tsx e2e_runner.ts --once --poll-ms 3000
 ```
 
 Runner actions:
-1. `GET /v1/intents/next`
-2. Signature verification
+
+1. `GET /v1/intents/next?agentAddress=...`
+2. Verify signed intent payload.
 3. `POST /v1/intents/{id}/ack`
-4. `executePaymentWithEvidence(...)`
-5. `POST /v1/intents/{id}/result`
+4. Upload Walrus evidence or build fallback marker.
+5. Execute selected rail:
+   - `native_gasless`: native stablecoin transfer, no sponsor signature.
+   - `sponsored_guard`: request sponsor bytes, agent signs, submit dual-signed tx.
+6. `POST /v1/intents/{id}/result`
 
-## 5) Observe Results
-
-### API:
+## 5. Observe Results
 
 ```bash
 curl http://localhost:8787/v1/intents/<INTENT_ID>
+curl http://localhost:8787/v1/checkout/sessions/<SESSION_ID>
 ```
 
-### Frontend:
+Frontend:
+
 1. Open `web` app.
-2. Use **Producer Intent Observer** with `intentId`.
-3. Use **Walrus Evidence Lookup** with `txDigest` to inspect `walrus_blob_id` links.
+2. Create or load checkout session.
+3. Use Audit Trail with `intentId` or transaction digest.
 
 ## Common Failure Signals
 
-- `signature_invalid`: `PRODUCER_SIGNING_SECRET` mismatch between API and runner.
-- `rate_limit`: SessionCap flow limit exceeded.
-- `insufficient_balance`: SafeFlow wallet balance too low.
+- `signature_invalid`: `PRODUCER_SIGNING_SECRET` mismatch.
+- `rate_limit`: guarded SessionCap flow limit exceeded.
+- `insufficient_balance`: AgentWallet stablecoin balance too low.
 - `expired`: intent reached `expiresAtMs`.
+- sponsor endpoint returns `409`: intent is native gasless or has not been ACKed.

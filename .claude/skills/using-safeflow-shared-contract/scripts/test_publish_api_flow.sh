@@ -6,11 +6,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 SKILL_CONFIG="$SCRIPT_DIR/.safeflow-config.json"
 AGENT_SCRIPTS_DIR="$REPO_ROOT/agent_scripts"
 
-DEFAULT_PUBLISH_API_BASE_URL="https://PUBLISH_API_BASE_URL_PLACEHOLDER"
+DEFAULT_PUBLISH_API_BASE_URL="https://producer.safeflow.space"
 DEFAULT_POLL_MS="3000"
 DEFAULT_TTL_SEC="600"
-DEFAULT_AMOUNT_MIST="1000000"
+DEFAULT_AMOUNT_ATOMIC="1000000"
 DEFAULT_REASON="SafeFlow skill publish-api test"
+DEFAULT_COIN_TYPE="0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC"
+DEFAULT_CURRENCY_SYMBOL="USDC"
+DEFAULT_EXECUTION_RAIL="auto"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[publish-test]${NC} $*"; }
@@ -35,7 +38,12 @@ Optional:
   --agent-address <address>        Agent address override
   --wallet-id <id>                 Wallet id override
   --session-cap-id <id>            Session cap id override
-  --amount-mist <n>                Amount in MIST (default: 1000000)
+  --amount-atomic <n>              Stablecoin atomic amount (default: 1000000)
+  --amount-mist <n>                Compatibility alias for --amount-atomic
+  --coin-type <type>               Coin type (default: Circle Sui testnet USDC)
+  --currency-symbol <symbol>       Currency symbol (default: USDC)
+  --execution-rail <rail>          auto, native_gasless, or sponsored_guard
+  --requires-guard                 Include wallet/session cap and force guarded execution
   --reason <text>                  Intent reason
   --order-id <text>                Merchant order id (default: skill_<timestamp>)
   --ttl-sec <n>                    Intent TTL in seconds (default: 600)
@@ -50,7 +58,11 @@ RECIPIENT=""
 AGENT_ADDRESS=""
 WALLET_ID=""
 SESSION_CAP_ID=""
-AMOUNT_MIST="$DEFAULT_AMOUNT_MIST"
+AMOUNT_ATOMIC="$DEFAULT_AMOUNT_ATOMIC"
+COIN_TYPE="$DEFAULT_COIN_TYPE"
+CURRENCY_SYMBOL="$DEFAULT_CURRENCY_SYMBOL"
+EXECUTION_RAIL="$DEFAULT_EXECUTION_RAIL"
+REQUIRES_GUARD=false
 REASON="$DEFAULT_REASON"
 ORDER_ID="skill_$(date +%s)"
 TTL_SEC="$DEFAULT_TTL_SEC"
@@ -64,7 +76,12 @@ while [[ $# -gt 0 ]]; do
         --agent-address) AGENT_ADDRESS="${2:-}"; shift 2 ;;
         --wallet-id) WALLET_ID="${2:-}"; shift 2 ;;
         --session-cap-id) SESSION_CAP_ID="${2:-}"; shift 2 ;;
-        --amount-mist) AMOUNT_MIST="${2:-}"; shift 2 ;;
+        --amount-atomic) AMOUNT_ATOMIC="${2:-}"; shift 2 ;;
+        --amount-mist) AMOUNT_ATOMIC="${2:-}"; shift 2 ;;
+        --coin-type) COIN_TYPE="${2:-}"; shift 2 ;;
+        --currency-symbol) CURRENCY_SYMBOL="${2:-}"; shift 2 ;;
+        --execution-rail) EXECUTION_RAIL="${2:-}"; shift 2 ;;
+        --requires-guard) REQUIRES_GUARD=true; shift ;;
         --reason) REASON="${2:-}"; shift 2 ;;
         --order-id) ORDER_ID="${2:-}"; shift 2 ;;
         --ttl-sec) TTL_SEC="${2:-}"; shift 2 ;;
@@ -86,8 +103,8 @@ if ! is_sui_address "$RECIPIENT"; then
     exit 1
 fi
 
-if ! [[ "$AMOUNT_MIST" =~ ^[1-9][0-9]*$ ]]; then
-    error "--amount-mist must be a positive integer."
+if ! [[ "$AMOUNT_ATOMIC" =~ ^[1-9][0-9]*$ ]]; then
+    error "--amount-atomic must be a positive integer."
     exit 1
 fi
 
@@ -98,6 +115,16 @@ fi
 
 if ! [[ "$POLL_MS" =~ ^[1-9][0-9]*$ ]]; then
     error "--poll-ms must be a positive integer."
+    exit 1
+fi
+
+if [[ "$EXECUTION_RAIL" != "auto" && "$EXECUTION_RAIL" != "native_gasless" && "$EXECUTION_RAIL" != "sponsored_guard" ]]; then
+    error "--execution-rail must be auto, native_gasless, or sponsored_guard."
+    exit 1
+fi
+
+if [[ "$EXECUTION_RAIL" == "native_gasless" && "$REQUIRES_GUARD" == true ]]; then
+    error "--requires-guard cannot be combined with --execution-rail native_gasless."
     exit 1
 fi
 
@@ -125,21 +152,35 @@ if [[ -f "$SKILL_CONFIG" ]]; then
     [[ -z "$AGENT_ADDRESS" ]] && AGENT_ADDRESS="$(jq -r '.agentAddress // empty' "$SKILL_CONFIG")"
     [[ -z "$WALLET_ID" ]] && WALLET_ID="$(jq -r '.walletId // empty' "$SKILL_CONFIG")"
     [[ -z "$SESSION_CAP_ID" ]] && SESSION_CAP_ID="$(jq -r '.sessionCapId // empty' "$SKILL_CONFIG")"
+    if [[ "$COIN_TYPE" == "$DEFAULT_COIN_TYPE" ]]; then
+        COIN_TYPE="$(jq -r --arg default "$DEFAULT_COIN_TYPE" '.coinType // $default' "$SKILL_CONFIG")"
+    fi
 fi
 
-if ! is_sui_address "$AGENT_ADDRESS" || ! is_sui_address "$WALLET_ID" || ! is_sui_address "$SESSION_CAP_ID"; then
-    error "Need valid agentAddress/walletId/sessionCapId. Run save_owner_config.sh first or pass explicit args."
+if ! is_sui_address "$AGENT_ADDRESS"; then
+    error "Need valid agentAddress. Run bootstrap_owner_handoff.sh or pass --agent-address."
     exit 1
+fi
+
+if [[ "$EXECUTION_RAIL" == "sponsored_guard" ]]; then
+    REQUIRES_GUARD=true
+fi
+
+GUARD_ARGS=()
+if [[ "$REQUIRES_GUARD" == true ]]; then
+    if ! is_sui_address "$WALLET_ID" || ! is_sui_address "$SESSION_CAP_ID"; then
+        error "Guarded flow needs valid walletId/sessionCapId. Run save_owner_config.sh or pass explicit args."
+        exit 1
+    fi
+    GUARD_ARGS=(--wallet-id "$WALLET_ID" --session-cap-id "$SESSION_CAP_ID")
 fi
 
 BASE="${PUBLISH_API_BASE_URL%/}"
-if [[ "$BASE" == *"PLACEHOLDER"* ]]; then
-    error "Publish API URL is still placeholder: $BASE"
-    exit 1
-fi
 
 info "Checking Publish API health..."
 curl -fsS "$BASE/health" | jq .
+
+info "Creating intent with executionRail=$EXECUTION_RAIL coinType=$COIN_TYPE amountAtomic=$AMOUNT_ATOMIC"
 
 if [[ -n "$API_KEY" ]]; then
     CREATE_OUTPUT="$(
@@ -147,10 +188,12 @@ if [[ -n "$API_KEY" ]]; then
         PRODUCER_API_BASE_URL="$BASE" PRODUCER_API_KEY="$API_KEY" \
         npx tsx create_intent.ts \
             --agent-address "$AGENT_ADDRESS" \
-            --wallet-id "$WALLET_ID" \
-            --session-cap-id "$SESSION_CAP_ID" \
+            "${GUARD_ARGS[@]}" \
             --recipient "$RECIPIENT" \
-            --amount-mist "$AMOUNT_MIST" \
+            --amount-atomic "$AMOUNT_ATOMIC" \
+            --coin-type "$COIN_TYPE" \
+            --currency-symbol "$CURRENCY_SYMBOL" \
+            --execution-rail "$EXECUTION_RAIL" \
             --reason "$REASON" \
             --ttl-sec "$TTL_SEC" \
             --order-id "$ORDER_ID"
@@ -161,10 +204,12 @@ else
         PRODUCER_API_BASE_URL="$BASE" \
         npx tsx create_intent.ts \
             --agent-address "$AGENT_ADDRESS" \
-            --wallet-id "$WALLET_ID" \
-            --session-cap-id "$SESSION_CAP_ID" \
+            "${GUARD_ARGS[@]}" \
             --recipient "$RECIPIENT" \
-            --amount-mist "$AMOUNT_MIST" \
+            --amount-atomic "$AMOUNT_ATOMIC" \
+            --coin-type "$COIN_TYPE" \
+            --currency-symbol "$CURRENCY_SYMBOL" \
+            --execution-rail "$EXECUTION_RAIL" \
             --reason "$REASON" \
             --ttl-sec "$TTL_SEC" \
             --order-id "$ORDER_ID"

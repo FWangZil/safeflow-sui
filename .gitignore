@@ -5,3 +5,4 @@ agent_wallet/Published.toml
 agent_scripts/.env
 agent_scripts/.agent_key.json
 producer_api/data/
+.specstory/

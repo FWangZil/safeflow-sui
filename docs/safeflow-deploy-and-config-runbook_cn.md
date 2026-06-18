@@ -1,16 +1,18 @@
 # SafeFlow 部署与配置手册
 
-本文记录从合约部署到本地配置写入的完整流程。
+本文记录当前 SafeFlow Sui demo 的部署与配置边界：Move 包发布、Producer API/Postgres、赞助者密钥、Agent Runner 和 Web 控制台。
 
-## 覆盖内容
+## 目标状态
 
-1. 发布 `agent_wallet/` 下的 Move 包
-2. 从 publish JSON 提取新的 `PACKAGE_ID`
-3. 更新：
-   - `agent_scripts/.env`
-   - `web/.env.local`
+- 合约仍位于 `agent_wallet/`，核心 Guard 是 `AgentWallet<T>` + `SessionCap`。
+- Producer API 使用 Postgres，不再为新 checkout flow 使用 JSON 文件状态。
+- Checkout 默认 `executionRail=auto`：
+  - allowlisted stablecoin 且不需要 Guard 时走 `native_gasless`。
+  - 指定 `requiresGuard` 或携带 `walletId/sessionCapId` 时走 `sponsored_guard`。
+- 默认稳定币是 Circle Sui testnet USDC：
+  `0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC`
 
-## 一键脚本
+## 发布 Move 包
 
 在仓库根目录执行：
 
@@ -25,71 +27,104 @@ chmod +x scripts/deploy_and_configure_safeflow.sh
 ./scripts/deploy_and_configure_safeflow.sh --gas-budget 200000000
 ```
 
-## 脚本行为
+脚本会：
 
-1. 检查依赖：`sui`、`jq`
-2. 备份 `agent_wallet/Published.toml` 到 `Published.toml.bak.<timestamp>`
-3. 清空 `Published.toml`（便于重复本地发布）
-4. 执行：
+1. 检查 `sui` 与 `jq`。
+2. 备份并清空 `agent_wallet/Published.toml`，便于本地重复发布。
+3. 执行 `sui client publish --gas-budget <value> --json`。
+4. 从 publish JSON 中解析 `PACKAGE_ID`。
+5. 写入 `agent_scripts/.env` 和 `web/.env.local` 的基础合约/Walrus/Producer API 配置。
+
+## Producer API 配置
 
 ```bash
-sui client publish --gas-budget <value> --json
+cd producer_api
+bun install
+
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/safeflow
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export PACKAGE_ID=<YOUR_PACKAGE_ID>
+export SUI_NETWORK=testnet
+export NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export DEFAULT_CURRENCY_SYMBOL=USDC
+export DEFAULT_CURRENCY_DECIMALS=6
+export NATIVE_GASLESS_COIN_TYPES=$DEFAULT_COIN_TYPE
+
+export SPONSOR_SECRET_KEY=<SPONSOR_SUI_PRIVATE_KEY>
+export SPONSOR_MAX_GAS_BUDGET=10000000
+export SPONSOR_FEE_BPS=100
+export SPONSOR_MIN_FEE_ATOMIC=0
+export SPONSOR_FEE_RECIPIENT=<SPONSOR_STABLECOIN_FEE_ADDRESS>
+
+export DEMO_PAYOUT_ADDRESS=<MERCHANT_PAYOUT_ADDRESS>
+export DEMO_AGENT_ADDRESS=<AGENT_ADDRESS>
+export DEMO_WALLET_ID=<WALLET_ID_FOR_GUARDED_FLOW>
+export DEMO_SESSION_CAP_ID=<SESSION_CAP_ID_FOR_GUARDED_FLOW>
+
+bun run migrate
+bun run seed:demo
+bun run dev
 ```
 
-5. 解析 `PACKAGE_ID`：
-   - `.objectChanges[] | select(.type=="published") | .packageId`
-   - 兜底：`.changed_objects[] ... | .objectId`
-6. 写入 `agent_scripts/.env`：
-   - `PACKAGE_ID`
-   - `WALRUS_PUBLISHER_URL`
-   - `WALRUS_AGGREGATOR_URL`
-   - `WALRUS_EPOCHS`
-   - `WALRUS_DEGRADE_ON_UPLOAD_FAILURE`
-   - `PRODUCER_API_BASE_URL`
-   - `PRODUCER_SIGNING_SECRET`
-   - `PRODUCER_API_KEY`
-7. 写入 `web/.env.local`：
-   - `NEXT_PUBLIC_PACKAGE_ID`
-   - `NEXT_PUBLIC_WALRUS_AGGREGATOR_URL`
-   - `NEXT_PUBLIC_WALRUS_SITE_SUFFIX`
-   - `NEXT_PUBLIC_PRODUCER_API_BASE_URL`
+`seed:demo` 会打印一次 merchant API key。后续创建 checkout session 时作为 `x-api-key` 使用。
 
-## 最新已发布包（示例）
+## Agent Runner 配置
 
-- `PACKAGE_ID`: `0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191`
+```bash
+cd agent_scripts
+bun install
 
-## 启动前端
+export PRODUCER_API_BASE_URL=http://localhost:8787
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export PACKAGE_ID=<YOUR_PACKAGE_ID>
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
+export WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+export WALRUS_EPOCHS=5
+export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
+
+bunx tsx e2e_runner.ts --poll-ms 3000
+```
+
+Runner 会拉取 intent、验签、ACK、上传 Walrus 证据，然后根据 Producer API 解析出的 rail 自动执行：
+
+- `native_gasless`：简单 allowlisted stablecoin 转账。
+- `sponsored_guard`：向 Producer API 请求 sponsor 构造的 `execute_payment<T>` 或 `execute_payment_with_fee<T>` 交易，Agent 追加签名后双签提交。
+
+## Web 控制台配置
 
 ```bash
 cd web
-npm run dev
+bun install
+
+export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
+export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
+export NEXT_PUBLIC_DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
+
+bun run dev
 ```
 
-## 给 AgentWallet 充值
+控制台包含 operator setup、merchant checkout/status 和 audit trail。公开 checkout 页面会轮询 session 状态。
 
-不要直接转账到 `walletId`，应调用合约 `deposit`：
+## 资金准备
 
-```bash
-chmod +x scripts/deposit_safeflow_wallet.sh
-./scripts/deposit_safeflow_wallet.sh --wallet-id <WALLET_ID> --amount-mist 1000000000
-```
+- Native gasless 简单转账：需要 allowlisted stablecoin，Agent 不需要 SUI gas。
+- Sponsored guard：Sponsor 需要 SUI 支付交易 gas；`AgentWallet<T>` 需要预存对应稳定币。
+- Sponsor fee reimbursement：当 `SPONSOR_FEE_BPS` 或 `SPONSOR_MIN_FEE_ATOMIC` 配置后，guarded flow 可以在同一稳定币中扣除 sponsor 手续费。
 
-可选参数：
-
-```bash
-./scripts/deposit_safeflow_wallet.sh \
-  --wallet-id <WALLET_ID> \
-  --amount-mist 500000000 \
-  --package-id <PACKAGE_ID> \
-  --from-coin-id <GAS_COIN_ID> \
-  --gas-budget 10000000
-```
+`scripts/deposit_safeflow_wallet.sh` 是旧的 `Coin<SUI>` 便捷脚本，仍可用于 SUI 类型低层调试。USDC demo 请使用 Dashboard 或 Sui PTB/CLI 调用 `wallet::deposit<USDC>`，不要直接把 coin 转给 `walletId`。
 
 ## 常见问题
 
-1. TLS/证书错误：
-   - 在可访问系统证书与外网的环境中执行发布命令。
-2. `already published`：
-   - 确认 `Published.toml` 已重置（脚本已自动处理并备份）。
-3. `PACKAGE_ID` 解析失败：
-   - 查看脚本输出的 raw/parsed 文件排查字段格式变化。
+1. `DATABASE_URL is required`
+   - 新 checkout flow 依赖 Postgres；先启动数据库并执行 `bun run migrate`。
+2. `PACKAGE_ID is required`
+   - sponsor 构造 guarded Move 调用时必须知道已发布包。
+3. Native gasless 没有命中
+   - 检查 `coinType` 是否在 `NATIVE_GASLESS_COIN_TYPES` 中，且 session 未设置 `requiresGuard` / `walletId` / `sessionCapId`。
+4. Guarded sponsor 失败
+   - 检查 intent 是否已被该 `agentAddress` claim、Sponsor SUI gas 是否足够、`SPONSOR_SECRET_KEY` 是否有效。

@@ -1,100 +1,92 @@
 # SafeFlow Deployment & Config Runbook
 
-This document records the full flow from contract deployment to local project config updates.
+This document records the current deployment/config flow for the Sui Move package, Producer API, agent runner, and web console.
 
-## What This Covers
-
-1. Publish the Move package under `agent_wallet/`
-2. Extract the new `PACKAGE_ID` from publish JSON
-3. Update:
-   - `agent_scripts/.env`
-   - `web/.env.local`
-
-## One-Command Script
+## 1. Publish Move Package
 
 From repo root:
 
 ```bash
 chmod +x scripts/deploy_and_configure_safeflow.sh
-./scripts/deploy_and_configure_safeflow.sh
-```
-
-Optional gas budget:
-
-```bash
 ./scripts/deploy_and_configure_safeflow.sh --gas-budget 200000000
 ```
 
-## What The Script Does
+The script:
 
-1. Verifies prerequisites: `sui`, `jq`
-2. Backs up `agent_wallet/Published.toml` to `Published.toml.bak.<timestamp>`
-3. Clears `Published.toml` (required when republishing same package locally)
-4. Runs:
+1. backs up and clears `agent_wallet/Published.toml`;
+2. runs `sui client publish --json`;
+3. parses `PACKAGE_ID`;
+4. writes `agent_scripts/.env`;
+5. writes `web/.env.local`.
+
+It does not configure Postgres or sponsor keys.
+
+## 2. Configure Producer API
 
 ```bash
-sui client publish --gas-budget <value> --json
+cd producer_api
+bun install
+
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/safeflow
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export PACKAGE_ID=<SAFEFLOW_PACKAGE_ID>
+export SPONSOR_SECRET_KEY=<SUI_SPONSOR_PRIVATE_KEY>
+export SPONSOR_MAX_GAS_BUDGET=10000000
+export SPONSOR_FEE_BPS=100
+export SPONSOR_MIN_FEE_ATOMIC=0
+export SPONSOR_FEE_RECIPIENT=<SPONSOR_STABLECOIN_FEE_ADDRESS>
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export NATIVE_GASLESS_COIN_TYPES=$DEFAULT_COIN_TYPE
+
+bun run migrate
+bun run seed:demo
+bun run dev
 ```
 
-5. Parses `PACKAGE_ID` from:
-   - `.objectChanges[] | select(.type=="published") | .packageId`
-   - Fallback: `.changed_objects[] ... | .objectId`
-6. Writes:
-   - `agent_scripts/.env` with:
-     - `PACKAGE_ID=<id>`
-     - `WALRUS_PUBLISHER_URL`
-     - `WALRUS_AGGREGATOR_URL`
-     - `WALRUS_EPOCHS`
-     - `WALRUS_DEGRADE_ON_UPLOAD_FAILURE`
-     - `PRODUCER_API_BASE_URL`
-     - `PRODUCER_SIGNING_SECRET`
-     - `PRODUCER_API_KEY`
-   - `web/.env.local` with:
-     - `NEXT_PUBLIC_PACKAGE_ID=<id>`
-     - `NEXT_PUBLIC_WALRUS_AGGREGATOR_URL`
-     - `NEXT_PUBLIC_WALRUS_SITE_SUFFIX`
-     - `NEXT_PUBLIC_PRODUCER_API_BASE_URL`
+`SPONSOR_SECRET_KEY` is the SUI gas payer for sponsored guard transactions. Stablecoin sponsor fee reimbursement is configured by `SPONSOR_FEE_BPS` / `SPONSOR_MIN_FEE_ATOMIC`.
 
-## Current Published Package (from latest run)
+## 3. Configure Agent Runner
 
-- `PACKAGE_ID`: `0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191`
+```bash
+cd agent_scripts
+bun install
 
-## Start Frontend After Config
+export PACKAGE_ID=<SAFEFLOW_PACKAGE_ID>
+export PRODUCER_API_BASE_URL=http://localhost:8787
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
+export WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+export WALRUS_EPOCHS=5
+export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
+
+bun run typecheck
+```
+
+## 4. Configure Web Console
 
 ```bash
 cd web
-npm run dev
+bun install
+
+export NEXT_PUBLIC_PACKAGE_ID=<SAFEFLOW_PACKAGE_ID>
+export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
+export NEXT_PUBLIC_DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
+
+bun run dev
 ```
 
-## Deposit Into AgentWallet
+## 5. Funding Notes
 
-Do not transfer SUI directly to `walletId`. Use contract `deposit`:
-
-```bash
-chmod +x scripts/deposit_safeflow_wallet.sh
-./scripts/deposit_safeflow_wallet.sh --wallet-id <WALLET_ID> --amount-mist 1000000000
-```
-
-Optional:
-
-```bash
-./scripts/deposit_safeflow_wallet.sh \
-  --wallet-id <WALLET_ID> \
-  --amount-mist 500000000 \
-  --package-id <PACKAGE_ID> \
-  --from-coin-id <GAS_COIN_ID> \
-  --gas-budget 10000000
-```
+- Native gasless rail does not need sponsor API and is intended for simple allowlisted stablecoin transfers.
+- Sponsored guard rail needs sponsor SUI gas and an `AgentWallet<T>` funded with the target stablecoin.
+- `scripts/deposit_safeflow_wallet.sh` is a legacy `Coin<SUI>` helper. For USDC, use the dashboard or a Sui PTB/CLI call to pass a `Coin<USDC>` object into `wallet::deposit<USDC>`.
 
 ## Troubleshooting
 
-1. `NativeCertsNotFound` / TLS errors:
-   - Run publish outside restricted sandbox environment so system certs are available.
-
-2. `Your package is already published`:
-   - Ensure `Published.toml` is reset before publish (script already does this and makes a backup).
-
-3. `PACKAGE_ID` parse failed:
-   - Inspect files printed by script:
-     - raw publish output
-     - parsed JSON output
+- `Your package is already published`: reset `agent_wallet/Published.toml` before publishing. The deploy script does this automatically.
+- `PACKAGE_ID` parse failed: inspect the raw and parsed JSON paths printed by the deploy script.
+- Sponsor endpoint `503`: sponsor key has no SUI gas coin.
+- Sponsor endpoint `409`: intent is native gasless or has not been ACKed.

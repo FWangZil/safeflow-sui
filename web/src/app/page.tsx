@@ -2,68 +2,78 @@
 
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction, useSuiClient } from '@mysten/dapp-kit';
 import { Transaction } from '@mysten/sui/transactions';
+import {
+    Activity,
+    ArrowUpRight,
+    BadgeDollarSign,
+    Clipboard,
+    ExternalLink,
+    Gauge,
+    KeyRound,
+    ReceiptText,
+    ShieldCheck,
+} from 'lucide-react';
 import Image from 'next/image';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
-const SUI_COIN_TYPE = '0x2::sui::SUI';
+const DEFAULT_COIN_TYPE = process.env.NEXT_PUBLIC_DEFAULT_COIN_TYPE
+    ?? '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC';
 const CLOCK_OBJECT_ID = '0x6';
-const DEFAULT_MAX_SPEND_PER_SECOND = 1_000_000;
-const DEFAULT_MAX_TOTAL_SPEND = 5_000_000_000;
-const DEFAULT_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_WALRUS_AGGREGATOR_URL = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
 const DEFAULT_WALRUS_SITE_SUFFIX = process.env.NEXT_PUBLIC_WALRUS_SITE_SUFFIX || '.walrus.site';
 const DEFAULT_PRODUCER_API_BASE_URL = process.env.NEXT_PUBLIC_PRODUCER_API_BASE_URL || 'http://localhost:8787';
+type CheckoutRailSelection = 'auto' | 'sponsored_guard' | 'native_gasless';
 
 interface BlobLinks {
     aggregatorUrl: string;
     siteUrl: string | null;
 }
 
-interface ObservedIntent {
+interface IntentView {
     intentId: string;
+    checkoutSessionId?: string;
     merchantOrderId: string;
     status: string;
     reason: string;
-    amountMist: number;
+    amountAtomic: number;
+    amountMist?: number;
+    coinType: string;
+    executionRail: 'sponsored_guard' | 'native_gasless';
+    requiresSponsor: boolean;
+    sponsorFeeAtomic?: number;
+    sponsorFeeRecipient?: string | null;
+    currencySymbol: string;
     recipient: string;
     txDigest?: string;
     walrusBlobId?: string;
     errorCode?: string;
     errorMessage?: string;
-    createdAtMs: number;
+    updatedAtMs: number;
+}
+
+interface CheckoutSessionView {
+    sessionId: string;
+    merchantOrderId: string;
+    intentId: string;
+    status: string;
+    checkoutUrl: string;
+    recipient: string;
+    amountAtomic: number;
+    coinType: string;
+    executionRail: 'sponsored_guard' | 'native_gasless';
+    requiresSponsor: boolean;
+    sponsorFeeAtomic?: number;
+    sponsorFeeRecipient?: string | null;
+    currencySymbol: string;
+    txDigest?: string;
+    walrusBlobId?: string;
+    errorCode?: string;
+    errorMessage?: string;
     updatedAtMs: number;
 }
 
 function getErrorMessage(error: unknown): string {
-    if (error instanceof Error) {
-        return error.message;
-    }
-
-    if (isRecord(error)) {
-        const message = error.message;
-        if (typeof message === 'string' && message.length > 0) {
-            return message;
-        }
-
-        const errorCode = error.code;
-        const details = error.details;
-
-        try {
-            return JSON.stringify(
-                {
-                    code: typeof errorCode === 'string' || typeof errorCode === 'number' ? errorCode : undefined,
-                    message: message,
-                    details: details,
-                },
-                null,
-                2,
-            );
-        } catch {
-            return '[Unknown structured error]';
-        }
-    }
-
-    return String(error);
+    return error instanceof Error ? error.message : String(error);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,66 +81,61 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function getDigestFromResult(result: unknown): string | null {
-    if (!isRecord(result)) {
-        return null;
-    }
-
-    const digest = result.digest;
-    return typeof digest === 'string' ? digest : null;
+    if (!isRecord(result)) return null;
+    return typeof result.digest === 'string' ? result.digest : null;
 }
 
 function extractIdFromEvents(events: Array<{ type: string; parsedJson: unknown }>, eventName: string, fieldName: string): string | null {
     for (const event of events) {
-        if (!event.type.endsWith(`::wallet::${eventName}`)) {
-            continue;
-        }
-
-        if (!isRecord(event.parsedJson)) {
-            continue;
-        }
-
+        if (!event.type.endsWith(`::wallet::${eventName}`) || !isRecord(event.parsedJson)) continue;
         const value = event.parsedJson[fieldName];
-        if (typeof value === 'string') {
-            return value;
-        }
+        if (typeof value === 'string') return value;
     }
-
     return null;
 }
 
 function extractWalrusBlobIdFromPaymentEvent(events: Array<{ type: string; parsedJson: unknown }>, packageId: string): string | null {
     const exactType = `${packageId}::wallet::PaymentExecuted`;
-
     for (const event of events) {
-        const isPaymentEvent = event.type === exactType || event.type.endsWith('::wallet::PaymentExecuted');
-        if (!isPaymentEvent) {
-            continue;
-        }
-        if (!isRecord(event.parsedJson)) {
-            continue;
-        }
+        if ((event.type !== exactType && !event.type.endsWith('::wallet::PaymentExecuted')) || !isRecord(event.parsedJson)) continue;
         const blobId = event.parsedJson.walrus_blob_id;
-        if (typeof blobId === 'string' && blobId.length > 0) {
-            return blobId;
-        }
+        if (typeof blobId === 'string' && blobId.length > 0) return blobId;
     }
-
     return null;
 }
 
 function buildWalrusLinks(blobId: string): BlobLinks {
     const aggregatorUrl = `${DEFAULT_WALRUS_AGGREGATOR_URL.replace(/\/+$/, '')}/v1/blobs/${encodeURIComponent(blobId)}`;
-    if (blobId.startsWith('fallback:')) {
-        return {
-            aggregatorUrl,
-            siteUrl: null,
-        };
-    }
+    if (blobId.startsWith('fallback:')) return { aggregatorUrl, siteUrl: null };
     const suffix = DEFAULT_WALRUS_SITE_SUFFIX.startsWith('.') ? DEFAULT_WALRUS_SITE_SUFFIX : `.${DEFAULT_WALRUS_SITE_SUFFIX}`;
-    return {
-        aggregatorUrl,
-        siteUrl: `https://${blobId}${suffix}`,
-    };
+    return { aggregatorUrl, siteUrl: `https://${blobId}${suffix}` };
+}
+
+function formatAmount(amountAtomic: number, decimals = 6): string {
+    const base = 10 ** decimals;
+    return (amountAtomic / base).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: decimals,
+    });
+}
+
+function formatRail(rail: 'sponsored_guard' | 'native_gasless'): string {
+    return rail === 'native_gasless' ? 'Native gasless' : 'Sponsored guard';
+}
+
+function short(value: string, head = 8, tail = 6): string {
+    return value.length > head + tail ? `${value.slice(0, head)}...${value.slice(-tail)}` : value;
+}
+
+function StatusPill({ status }: { status: string }) {
+    const color = status === 'executed'
+        ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+        : status === 'failed' || status === 'expired'
+            ? 'bg-red-100 text-red-800 border-red-200'
+            : status === 'claimed'
+                ? 'bg-amber-100 text-amber-800 border-amber-200'
+                : 'bg-slate-100 text-slate-700 border-slate-200';
+    return <span className={`inline-flex items-center rounded-md border px-2 py-1 text-xs font-semibold ${color}`}>{status}</span>;
 }
 
 export default function Home() {
@@ -139,387 +144,404 @@ export default function Home() {
     const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
     const [agentAddress, setAgentAddress] = useState('');
-    const [status, setStatus] = useState('');
+    const [coinType, setCoinType] = useState(DEFAULT_COIN_TYPE);
+    const [maxSpendPerSecond, setMaxSpendPerSecond] = useState('1000000');
+    const [maxTotalSpend, setMaxTotalSpend] = useState('10000000');
+    const [operatorStatus, setOperatorStatus] = useState('');
     const [walletId, setWalletId] = useState('');
     const [sessionCapId, setSessionCapId] = useState('');
+
+    const [merchantApiKey, setMerchantApiKey] = useState('');
+    const [checkoutOrderId, setCheckoutOrderId] = useState(`order_${Date.now()}`);
+    const [checkoutAmount, setCheckoutAmount] = useState('1250000');
+    const [checkoutRail, setCheckoutRail] = useState<CheckoutRailSelection>('auto');
+    const [checkoutReason, setCheckoutReason] = useState('AI agent checkout payment');
+    const [checkoutStatus, setCheckoutStatus] = useState('');
+    const [checkoutSession, setCheckoutSession] = useState<CheckoutSessionView | null>(null);
+    const [checkoutIntent, setCheckoutIntent] = useState<IntentView | null>(null);
+    const [sessionLookupId, setSessionLookupId] = useState('');
+
+    const [intentIdQuery, setIntentIdQuery] = useState('');
     const [queryDigest, setQueryDigest] = useState('');
-    const [queryStatus, setQueryStatus] = useState('');
+    const [auditStatus, setAuditStatus] = useState('');
+    const [observedIntent, setObservedIntent] = useState<IntentView | null>(null);
     const [resolvedBlobId, setResolvedBlobId] = useState('');
     const [blobLinks, setBlobLinks] = useState<BlobLinks | null>(null);
-    const [intentIdQuery, setIntentIdQuery] = useState('');
-    const [intentStatus, setIntentStatus] = useState('');
-    const [observedIntent, setObservedIntent] = useState<ObservedIntent | null>(null);
-    const [observedIntentBlobLinks, setObservedIntentBlobLinks] = useState<BlobLinks | null>(null);
+
+    const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
+    const checkoutUrl = useMemo(() => checkoutSession?.checkoutUrl ?? '', [checkoutSession]);
 
     const handleCreateWalletAndCap = async () => {
         if (!currentAccount) {
-            setStatus('Please connect your wallet first.');
+            setOperatorStatus('Connect a Sui wallet first.');
             return;
         }
-
-        const normalizedAgentAddress = agentAddress.trim();
-        if (!normalizedAgentAddress) {
-            setStatus('Please enter the Agent Address.');
-            return;
-        }
-        if (!/^0x[0-9a-fA-F]{64}$/.test(normalizedAgentAddress)) {
-            setStatus('Invalid agent address format. Expected 0x + 64 hex chars.');
-            return;
-        }
-
-        const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
         if (!packageId) {
-            setStatus('Missing NEXT_PUBLIC_PACKAGE_ID. Please set it to your deployed package id.');
+            setOperatorStatus('Missing NEXT_PUBLIC_PACKAGE_ID.');
+            return;
+        }
+        if (!/^0x[0-9a-fA-F]{64}$/.test(agentAddress.trim())) {
+            setOperatorStatus('Agent address must be 0x + 64 hex chars.');
             return;
         }
 
         try {
+            setOperatorStatus('Creating stablecoin AgentWallet...');
             setWalletId('');
             setSessionCapId('');
 
-            setStatus('1/2 Creating wallet...');
             const createWalletTx = new Transaction();
             createWalletTx.moveCall({
                 target: `${packageId}::wallet::create_wallet`,
-                typeArguments: [SUI_COIN_TYPE],
+                typeArguments: [coinType.trim()],
                 arguments: [],
             });
-
-            const walletExecution = await signAndExecuteTransaction({
-                transaction: createWalletTx,
-            });
+            const walletExecution = await signAndExecuteTransaction({ transaction: createWalletTx });
             const walletDigest = getDigestFromResult(walletExecution);
-            if (!walletDigest) {
-                throw new Error('Wallet transaction completed but no digest returned.');
-            }
-
-            const walletTx = await suiClient.waitForTransaction({
-                digest: walletDigest,
-                options: { showEvents: true },
-            });
-            const walletEvents = walletTx.events ?? [];
-            const createdWalletId = extractIdFromEvents(walletEvents, 'WalletCreated', 'wallet_id');
-            if (!createdWalletId) {
-                throw new Error('Wallet created but wallet_id was not found in events.');
-            }
+            if (!walletDigest) throw new Error('Wallet transaction returned no digest.');
+            const walletTx = await suiClient.waitForTransaction({ digest: walletDigest, options: { showEvents: true } });
+            const createdWalletId = extractIdFromEvents(walletTx.events ?? [], 'WalletCreated', 'wallet_id');
+            if (!createdWalletId) throw new Error('WalletCreated event did not include wallet_id.');
             setWalletId(createdWalletId);
 
-            setStatus('2/2 Creating SessionCap...');
-            const expiresAtMs = Date.now() + DEFAULT_SESSION_TTL_MS;
+            setOperatorStatus('Creating SessionCap...');
             const createCapTx = new Transaction();
             createCapTx.moveCall({
                 target: `${packageId}::wallet::create_session_cap`,
-                typeArguments: [SUI_COIN_TYPE],
+                typeArguments: [coinType.trim()],
                 arguments: [
                     createCapTx.object(createdWalletId),
-                    createCapTx.pure.address(normalizedAgentAddress),
-                    createCapTx.pure.u64(DEFAULT_MAX_SPEND_PER_SECOND),
-                    createCapTx.pure.u64(DEFAULT_MAX_TOTAL_SPEND),
-                    createCapTx.pure.u64(expiresAtMs),
+                    createCapTx.pure.address(agentAddress.trim()),
+                    createCapTx.pure.u64(Number(maxSpendPerSecond)),
+                    createCapTx.pure.u64(Number(maxTotalSpend)),
+                    createCapTx.pure.u64(Date.now() + 24 * 60 * 60 * 1000),
                     createCapTx.object(CLOCK_OBJECT_ID),
                 ],
             });
-
-            const capExecution = await signAndExecuteTransaction({
-                transaction: createCapTx,
-            });
+            const capExecution = await signAndExecuteTransaction({ transaction: createCapTx });
             const capDigest = getDigestFromResult(capExecution);
-            if (!capDigest) {
-                throw new Error('SessionCap transaction completed but no digest returned.');
-            }
-
-            const capTx = await suiClient.waitForTransaction({
-                digest: capDigest,
-                options: { showEvents: true },
-            });
-            const capEvents = capTx.events ?? [];
-            const createdSessionCapId = extractIdFromEvents(capEvents, 'SessionCapCreated', 'cap_id');
-            if (!createdSessionCapId) {
-                throw new Error('SessionCap created but cap_id was not found in events.');
-            }
-
-            setSessionCapId(createdSessionCapId);
-            setStatus(`Done. walletId=${createdWalletId}, sessionCapId=${createdSessionCapId}`);
-        } catch (e: unknown) {
-            console.error('Failed to provision SafeFlow allowance', e);
-            setStatus(`Error: ${getErrorMessage(e)}`);
+            if (!capDigest) throw new Error('SessionCap transaction returned no digest.');
+            const capTx = await suiClient.waitForTransaction({ digest: capDigest, options: { showEvents: true } });
+            const createdCapId = extractIdFromEvents(capTx.events ?? [], 'SessionCapCreated', 'cap_id');
+            if (!createdCapId) throw new Error('SessionCapCreated event did not include cap_id.');
+            setSessionCapId(createdCapId);
+            setOperatorStatus('Allowance created. Deposit USDC into the wallet object with the CLI helper, then seed the producer API.');
+        } catch (error) {
+            setOperatorStatus(`Error: ${getErrorMessage(error)}`);
         }
     };
 
-    const handleLookupWalrusEvidence = async () => {
-        const packageId = process.env.NEXT_PUBLIC_PACKAGE_ID;
-        if (!packageId) {
-            setQueryStatus('Missing NEXT_PUBLIC_PACKAGE_ID. Please set it to your deployed package id.');
+    const handleCreateCheckoutSession = async () => {
+        if (!merchantApiKey.trim()) {
+            setCheckoutStatus('Enter the demo merchant API key from seed:demo.');
             return;
         }
-
-        const digest = queryDigest.trim();
-        if (!digest) {
-            setQueryStatus('Please enter a transaction digest.');
-            return;
-        }
-
         try {
-            setQueryStatus('Fetching transaction events...');
-            setResolvedBlobId('');
-            setBlobLinks(null);
-
-            const tx = await suiClient.getTransactionBlock({
-                digest,
-                options: { showEvents: true },
+            setCheckoutStatus('Creating checkout session...');
+            const response = await fetch(`${DEFAULT_PRODUCER_API_BASE_URL.replace(/\/+$/, '')}/v1/checkout/sessions`, {
+                method: 'POST',
+                headers: {
+                    'content-type': 'application/json',
+                    'x-api-key': merchantApiKey.trim(),
+                },
+                body: JSON.stringify({
+                    merchantOrderId: checkoutOrderId.trim(),
+                    executionRail: checkoutRail,
+                    ...(agentAddress.trim() ? { agentAddress: agentAddress.trim() } : {}),
+                    amountAtomic: Number(checkoutAmount),
+                    coinType: coinType.trim(),
+                    currencySymbol: 'USDC',
+                    reason: checkoutReason.trim(),
+                }),
             });
-            const events = tx.events ?? [];
-            const blobId = extractWalrusBlobIdFromPaymentEvent(events as Array<{ type: string; parsedJson: unknown }>, packageId);
-            if (!blobId) {
-                setQueryStatus('No PaymentExecuted event with walrus_blob_id found in this transaction.');
-                return;
-            }
-
-            setResolvedBlobId(blobId);
-            setBlobLinks(buildWalrusLinks(blobId));
-            setQueryStatus('Walrus evidence resolved.');
-        } catch (error: unknown) {
-            console.error('Failed to fetch Walrus evidence', error);
-            setQueryStatus(`Error: ${getErrorMessage(error)}`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+            setCheckoutSession(payload.session);
+            setCheckoutIntent(payload.intent);
+            setSessionLookupId(payload.session.sessionId);
+            setIntentIdQuery(payload.intent.intentId);
+            setCheckoutStatus('Checkout session created.');
+        } catch (error) {
+            setCheckoutStatus(`Error: ${getErrorMessage(error)}`);
         }
     };
 
-    const handleCopy = async (value: string) => {
+    const handleLoadCheckoutSession = async () => {
+        if (!sessionLookupId.trim()) {
+            setCheckoutStatus('Enter a checkout session id.');
+            return;
+        }
         try {
-            await navigator.clipboard.writeText(value);
-            setQueryStatus('Copied to clipboard.');
-        } catch {
-            setQueryStatus('Copy failed. Please copy manually.');
+            setCheckoutStatus('Loading checkout session...');
+            const response = await fetch(`${DEFAULT_PRODUCER_API_BASE_URL.replace(/\/+$/, '')}/v1/checkout/sessions/${encodeURIComponent(sessionLookupId.trim())}`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
+            setCheckoutSession(payload.session);
+            setCheckoutStatus('Checkout session loaded.');
+        } catch (error) {
+            setCheckoutStatus(`Error: ${getErrorMessage(error)}`);
         }
     };
 
     const handleLookupIntent = async () => {
-        const intentId = intentIdQuery.trim();
-        if (!intentId) {
-            setIntentStatus('Please enter an intent ID.');
+        if (!intentIdQuery.trim()) {
+            setAuditStatus('Enter an intent ID.');
             return;
         }
-
         try {
-            setIntentStatus('Fetching intent from producer API...');
-            setObservedIntent(null);
-            setObservedIntentBlobLinks(null);
-
-            const response = await fetch(`${DEFAULT_PRODUCER_API_BASE_URL.replace(/\/+$/, '')}/v1/intents/${encodeURIComponent(intentId)}`);
-            const payload = await response.json() as { intent?: ObservedIntent; error?: string };
-            if (!response.ok || !payload.intent) {
-                throw new Error(payload.error || `HTTP ${response.status}`);
-            }
-
+            setAuditStatus('Fetching intent...');
+            const response = await fetch(`${DEFAULT_PRODUCER_API_BASE_URL.replace(/\/+$/, '')}/v1/intents/${encodeURIComponent(intentIdQuery.trim())}`);
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error ?? `HTTP ${response.status}`);
             setObservedIntent(payload.intent);
             if (payload.intent.walrusBlobId) {
-                setObservedIntentBlobLinks(buildWalrusLinks(payload.intent.walrusBlobId));
+                setResolvedBlobId(payload.intent.walrusBlobId);
+                setBlobLinks(buildWalrusLinks(payload.intent.walrusBlobId));
             }
-            setIntentStatus('Intent loaded.');
+            setAuditStatus('Intent loaded.');
         } catch (error) {
-            setIntentStatus(`Error: ${getErrorMessage(error)}`);
+            setAuditStatus(`Error: ${getErrorMessage(error)}`);
         }
     };
 
+    const handleLookupWalrusEvidence = async () => {
+        if (!packageId) {
+            setAuditStatus('Missing NEXT_PUBLIC_PACKAGE_ID.');
+            return;
+        }
+        if (!queryDigest.trim()) {
+            setAuditStatus('Enter a transaction digest.');
+            return;
+        }
+        try {
+            setAuditStatus('Fetching transaction events...');
+            const tx = await suiClient.getTransactionBlock({
+                digest: queryDigest.trim(),
+                options: { showEvents: true },
+            });
+            const blobId = extractWalrusBlobIdFromPaymentEvent(tx.events ?? [], packageId);
+            if (!blobId) throw new Error('No PaymentExecuted event with walrus_blob_id found.');
+            setResolvedBlobId(blobId);
+            setBlobLinks(buildWalrusLinks(blobId));
+            setAuditStatus('Walrus evidence resolved.');
+        } catch (error) {
+            setAuditStatus(`Error: ${getErrorMessage(error)}`);
+        }
+    };
+
+    const copy = async (value: string) => {
+        await navigator.clipboard.writeText(value);
+    };
+
     return (
-        <main className="flex min-h-screen flex-col items-center p-24 bg-zinc-50">
-            <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
-                <div className="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm mb-8">
+        <main className="min-h-screen bg-[#f6f8f7] text-slate-950">
+            <header className="border-b border-slate-200 bg-white">
+                <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
                     <div className="flex items-center gap-3">
-                        <Image
-                            src="/safeflow-logo-128.png"
-                            alt="SafeFlow logo"
-                            width={36}
-                            height={36}
-                            className="h-9 w-9 rounded-md object-cover"
-                            priority
-                        />
-                        <h1 className="text-2xl font-bold text-zinc-800">SafeFlow <span className="text-blue-500">Agent Air-Gap</span></h1>
+                        <Image src="/safeflow-logo-128.png" alt="SafeFlow" width={40} height={40} className="h-10 w-10 rounded-md" priority />
+                        <div>
+                            <h1 className="text-lg font-semibold tracking-normal">SafeFlow Gasless Checkout</h1>
+                            <p className="text-xs text-slate-500">AgentPay Guard for stablecoin merchant settlement</p>
+                        </div>
                     </div>
                     <ConnectButton />
                 </div>
+            </header>
 
-                <div className="bg-white p-8 rounded-xl shadow-sm border border-zinc-100 mb-8">
-                    <h2 className="text-xl font-semibold mb-4 text-zinc-800">Human Dashboard</h2>
-                    <p className="text-zinc-600 mb-6">
-                        Deposit funds and provision a rate-limited SessionCap for your OpenClaw Agent. The agent can stream payments safely without exposing your main wallet.
-                    </p>
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-zinc-700 mb-1">OpenClaw Agent Address</label>
-                            <input
-                                type="text"
-                                value={agentAddress}
-                                onChange={(e) => setAgentAddress(e.target.value)}
-                                className="w-full p-2 border border-zinc-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
-                                placeholder="0x..."
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-zinc-700 mb-1">Max Spend per Second (MIST)</label>
-                                <input type="number" defaultValue={1000000} className="w-full p-2 border border-zinc-300 rounded-md shadow-sm bg-zinc-50 text-black" readOnly />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-zinc-700 mb-1">Max Total Spend (MIST)</label>
-                                <input type="number" defaultValue={5000000000} className="w-full p-2 border border-zinc-300 rounded-md shadow-sm bg-zinc-50 text-black" readOnly />
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={handleCreateWalletAndCap}
-                            className="mt-4 w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md transition-colors"
-                        >
-                            Provision Agent Allowance
-                        </button>
+            <section className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[1fr_1.15fr_1fr]">
+                <Panel icon={<ShieldCheck className="h-5 w-5" />} title="Operator Setup" description="Provision a coin-specific wallet and SessionCap. Sponsor gas is used only later by the agent payment executor.">
+                    <Field label="Agent address">
+                        <input value={agentAddress} onChange={(event) => setAgentAddress(event.target.value)} className="input" placeholder="0x..." />
+                    </Field>
+                    <Field label="Coin type">
+                        <textarea value={coinType} onChange={(event) => setCoinType(event.target.value)} className="input min-h-20 resize-none font-mono text-xs" />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                        <Field label="Per-second limit">
+                            <input value={maxSpendPerSecond} onChange={(event) => setMaxSpendPerSecond(event.target.value)} className="input" inputMode="numeric" />
+                        </Field>
+                        <Field label="Total cap">
+                            <input value={maxTotalSpend} onChange={(event) => setMaxTotalSpend(event.target.value)} className="input" inputMode="numeric" />
+                        </Field>
                     </div>
+                    <button onClick={handleCreateWalletAndCap} className="primary-button">
+                        <KeyRound className="h-4 w-4" /> Provision allowance
+                    </button>
+                    <StatusBox message={operatorStatus} />
+                    <ObjectRow label="walletId" value={walletId} onCopy={copy} />
+                    <ObjectRow label="sessionCapId" value={sessionCapId} onCopy={copy} />
+                </Panel>
 
-                    {status && (
-                        <div className="mt-4 p-3 bg-zinc-100 rounded-md text-sm font-mono text-zinc-800">
-                            {status}
-                        </div>
-                    )}
-                    {walletId && (
-                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all">
-                            walletId: {walletId}
-                        </div>
-                    )}
-                    {sessionCapId && (
-                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all">
-                            sessionCapId: {sessionCapId}
-                        </div>
-                    )}
-                </div>
-
-                <div className="bg-white p-8 rounded-xl shadow-sm border border-zinc-100 mb-8">
-                    <h2 className="text-xl font-semibold mb-4 text-zinc-800">Walrus Evidence Lookup</h2>
-                    <p className="text-zinc-600 mb-4">
-                        Paste a payment transaction digest to resolve `walrus_blob_id` and open evidence links.
-                    </p>
-                    <div className="flex flex-col md:flex-row gap-3">
-                        <input
-                            type="text"
-                            value={queryDigest}
-                            onChange={(e) => setQueryDigest(e.target.value)}
-                            className="flex-1 p-2 border border-zinc-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
-                            placeholder="Transaction digest (e.g. 2uknWpv1...)"
-                        />
-                        <button
-                            onClick={handleLookupWalrusEvidence}
-                            className="bg-zinc-900 hover:bg-zinc-800 text-white font-medium py-2 px-4 rounded-md transition-colors"
-                        >
-                            Resolve Evidence
-                        </button>
+                <Panel icon={<ReceiptText className="h-5 w-5" />} title="Merchant Checkout" description="Create a checkout session backed by a signed intent. Simple transfers use native gasless stablecoins; guarded payments use sponsor gas.">
+                    <Field label="Merchant API key">
+                        <input value={merchantApiKey} onChange={(event) => setMerchantApiKey(event.target.value)} className="input" placeholder="sf_demo_..." />
+                    </Field>
+                    <div className="grid gap-3 md:grid-cols-2">
+                        <Field label="Order ID">
+                            <input value={checkoutOrderId} onChange={(event) => setCheckoutOrderId(event.target.value)} className="input" />
+                        </Field>
+                        <Field label="Amount atomic">
+                            <input value={checkoutAmount} onChange={(event) => setCheckoutAmount(event.target.value)} className="input" inputMode="numeric" />
+                        </Field>
                     </div>
-
-                    {queryStatus && (
-                        <div className="mt-4 p-3 bg-zinc-100 rounded-md text-sm font-mono text-zinc-800">
-                            {queryStatus}
-                        </div>
-                    )}
-                    {resolvedBlobId && (
-                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all">
-                            <div className="mb-2">walrus_blob_id: {resolvedBlobId}</div>
-                            <button
-                                onClick={() => handleCopy(resolvedBlobId)}
-                                className="bg-white hover:bg-zinc-50 border border-zinc-300 rounded px-2 py-1 text-xs"
-                            >
-                                Copy blob id
-                            </button>
-                        </div>
-                    )}
-                    {blobLinks && (
-                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all space-y-2">
-                            <div>
-                                aggregator: <a className="text-blue-600 underline" href={blobLinks.aggregatorUrl} target="_blank" rel="noreferrer">{blobLinks.aggregatorUrl}</a>
+                    <Field label="Execution rail">
+                        <select value={checkoutRail} onChange={(event) => setCheckoutRail(event.target.value as CheckoutRailSelection)} className="input">
+                            <option value="auto">Auto select best rail</option>
+                            <option value="native_gasless">Native gasless stablecoin transfer</option>
+                            <option value="sponsored_guard">Sponsored AgentPay Guard</option>
+                        </select>
+                    </Field>
+                    <Field label="Reason">
+                        <input value={checkoutReason} onChange={(event) => setCheckoutReason(event.target.value)} className="input" />
+                    </Field>
+                    <button onClick={handleCreateCheckoutSession} className="primary-button bg-slate-950 hover:bg-slate-800">
+                        <BadgeDollarSign className="h-4 w-4" /> Create checkout session
+                    </button>
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <input value={sessionLookupId} onChange={(event) => setSessionLookupId(event.target.value)} className="input" placeholder="session id" />
+                        <button onClick={handleLoadCheckoutSession} className="secondary-button">Refresh</button>
+                    </div>
+                    <StatusBox message={checkoutStatus} />
+                    {checkoutSession && (
+                        <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <div className="text-sm font-semibold">Checkout {short(checkoutSession.sessionId)}</div>
+                                <StatusPill status={checkoutSession.status} />
                             </div>
-                            {blobLinks.siteUrl ? (
-                                <div>
-                                    site: <a className="text-blue-600 underline" href={blobLinks.siteUrl} target="_blank" rel="noreferrer">{blobLinks.siteUrl}</a>
-                                </div>
-                            ) : (
-                                <div>site: not available for fallback blob ids</div>
+                            <Metric label="Amount" value={`${formatAmount(checkoutSession.amountAtomic)} ${checkoutSession.currencySymbol}`} />
+                            <Metric label="Rail" value={formatRail(checkoutSession.executionRail)} />
+                            {checkoutSession.requiresSponsor && (
+                                <Metric label="Sponsor fee" value={`${formatAmount(checkoutSession.sponsorFeeAtomic ?? 0)} ${checkoutSession.currencySymbol}`} />
+                            )}
+                            <Metric label="Intent" value={short(checkoutSession.intentId)} />
+                            <Metric label="Recipient" value={short(checkoutSession.recipient)} />
+                            {checkoutUrl && (
+                                <a className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-emerald-700" href={checkoutUrl} target="_blank" rel="noreferrer">
+                                    Open checkout <ArrowUpRight className="h-4 w-4" />
+                                </a>
                             )}
                         </div>
                     )}
-                </div>
-
-                <div className="bg-white p-8 rounded-xl shadow-sm border border-zinc-100 mb-8">
-                    <h2 className="text-xl font-semibold mb-4 text-zinc-800">Producer Intent Observer</h2>
-                    <p className="text-zinc-600 mb-4">
-                        Query producer API intent status and on-chain execution trace by `intentId`.
-                    </p>
-                    <div className="flex flex-col md:flex-row gap-3">
-                        <input
-                            type="text"
-                            value={intentIdQuery}
-                            onChange={(e) => setIntentIdQuery(e.target.value)}
-                            className="flex-1 p-2 border border-zinc-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-black"
-                            placeholder="intentId (UUID)"
-                        />
-                        <button
-                            onClick={handleLookupIntent}
-                            className="bg-emerald-700 hover:bg-emerald-800 text-white font-medium py-2 px-4 rounded-md transition-colors"
-                        >
-                            Query Intent
-                        </button>
-                    </div>
-
-                    <div className="mt-3 text-xs text-zinc-500 font-mono">
-                        API: {DEFAULT_PRODUCER_API_BASE_URL}
-                    </div>
-
-                    {intentStatus && (
-                        <div className="mt-4 p-3 bg-zinc-100 rounded-md text-sm font-mono text-zinc-800">
-                            {intentStatus}
-                        </div>
+                    {checkoutIntent && (
+                        <>
+                            <ObjectRow label="intentId" value={checkoutIntent.intentId} onCopy={copy} />
+                            <ObjectRow label="requiresSponsor" value={String(checkoutIntent.requiresSponsor)} onCopy={copy} />
+                            {checkoutIntent.sponsorFeeRecipient && <ObjectRow label="sponsorFeeRecipient" value={checkoutIntent.sponsorFeeRecipient} onCopy={copy} />}
+                        </>
                     )}
+                </Panel>
 
+                <Panel icon={<Activity className="h-5 w-5" />} title="Audit Trail" description="Inspect producer status and resolve Walrus evidence from the final Sui transaction.">
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <input value={intentIdQuery} onChange={(event) => setIntentIdQuery(event.target.value)} className="input" placeholder="intentId" />
+                        <button onClick={handleLookupIntent} className="secondary-button">Load intent</button>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                        <input value={queryDigest} onChange={(event) => setQueryDigest(event.target.value)} className="input" placeholder="tx digest" />
+                        <button onClick={handleLookupWalrusEvidence} className="secondary-button">Resolve evidence</button>
+                    </div>
+                    <StatusBox message={auditStatus} />
                     {observedIntent && (
-                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all space-y-2">
-                            <div>intentId: {observedIntent.intentId}</div>
-                            <div>orderId: {observedIntent.merchantOrderId}</div>
-                            <div>status: {observedIntent.status}</div>
-                            <div>reason: {observedIntent.reason}</div>
-                            <div>amountMist: {observedIntent.amountMist}</div>
-                            <div>recipient: {observedIntent.recipient}</div>
-                            {observedIntent.txDigest && <div>txDigest: {observedIntent.txDigest}</div>}
-                            {observedIntent.walrusBlobId && <div>walrusBlobId: {observedIntent.walrusBlobId}</div>}
-                            {observedIntent.errorCode && <div>errorCode: {observedIntent.errorCode}</div>}
-                            {observedIntent.errorMessage && <div>errorMessage: {observedIntent.errorMessage}</div>}
-                            <div>updatedAt: {new Date(observedIntent.updatedAtMs).toLocaleString()}</div>
+                        <div className="rounded-md border border-slate-200 bg-slate-50 p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <div className="text-sm font-semibold">{observedIntent.merchantOrderId}</div>
+                                <StatusPill status={observedIntent.status} />
+                            </div>
+                            <Metric label="Amount" value={`${formatAmount(observedIntent.amountAtomic)} ${observedIntent.currencySymbol}`} />
+                            {observedIntent.requiresSponsor && (
+                                <Metric label="Sponsor fee" value={`${formatAmount(observedIntent.sponsorFeeAtomic ?? 0)} ${observedIntent.currencySymbol}`} />
+                            )}
+                            <Metric label="Recipient" value={short(observedIntent.recipient)} />
+                            {observedIntent.txDigest && <Metric label="txDigest" value={short(observedIntent.txDigest)} />}
+                            {observedIntent.walrusBlobId && <Metric label="Walrus" value={short(observedIntent.walrusBlobId)} />}
                         </div>
                     )}
-
-                    {observedIntentBlobLinks && (
-                        <div className="mt-3 p-3 bg-zinc-100 rounded-md text-xs font-mono text-zinc-800 break-all space-y-2">
-                            <div>
-                                aggregator: <a className="text-blue-600 underline" href={observedIntentBlobLinks.aggregatorUrl} target="_blank" rel="noreferrer">{observedIntentBlobLinks.aggregatorUrl}</a>
-                            </div>
-                            {observedIntentBlobLinks.siteUrl ? (
-                                <div>
-                                    site: <a className="text-blue-600 underline" href={observedIntentBlobLinks.siteUrl} target="_blank" rel="noreferrer">{observedIntentBlobLinks.siteUrl}</a>
-                                </div>
-                            ) : (
-                                <div>site: not available for fallback blob ids</div>
+                    {resolvedBlobId && <ObjectRow label="walrusBlobId" value={resolvedBlobId} onCopy={copy} />}
+                    {blobLinks && (
+                        <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-4 text-sm">
+                            <a className="flex items-center gap-2 text-emerald-700" href={blobLinks.aggregatorUrl} target="_blank" rel="noreferrer">
+                                Aggregator <ExternalLink className="h-4 w-4" />
+                            </a>
+                            {blobLinks.siteUrl && (
+                                <a className="flex items-center gap-2 text-emerald-700" href={blobLinks.siteUrl} target="_blank" rel="noreferrer">
+                                    Walrus site <ExternalLink className="h-4 w-4" />
+                                </a>
                             )}
                         </div>
                     )}
-                </div>
+                </Panel>
+            </section>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-zinc-100">
-                        <h3 className="font-semibold text-lg mb-2 text-zinc-800">1. Rate-Limited</h3>
-                        <p className="text-sm text-zinc-600">The agent cannot spend faster than the limit you set, stopping malicious prompt injections from draining funds.</p>
-                    </div>
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-zinc-100">
-                        <h3 className="font-semibold text-lg mb-2 text-zinc-800">2. Auditable via Walrus</h3>
-                        <p className="text-sm text-zinc-600">The agent must provide a cryptographic proof of its reasoning via Walrus blob ID to spend.</p>
-                    </div>
+            <section className="mx-auto grid max-w-7xl gap-5 px-5 pb-8 md:grid-cols-3">
+                <InfoStrip icon={<Gauge className="h-5 w-5" />} title="Guarded by SessionCap" body="The Move object enforces per-second spend, total spend, expiry, and wallet binding." />
+                <InfoStrip icon={<BadgeDollarSign className="h-5 w-5" />} title="Stablecoin-first" body="Native gasless uses Sui address-balance stablecoin transfer for simple USDC checkout." />
+                <InfoStrip icon={<ShieldCheck className="h-5 w-5" />} title="Guard when needed" body="Complex agent payments keep SessionCap controls and sponsor gas after ACK." />
+            </section>
+        </main>
+    );
+}
+
+function Panel({ icon, title, description, children }: { icon: React.ReactNode; title: string; description: string; children: React.ReactNode }) {
+    return (
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-5 flex items-start gap-3">
+                <div className="grid h-9 w-9 place-items-center rounded-md bg-emerald-50 text-emerald-700">{icon}</div>
+                <div>
+                    <h2 className="text-base font-semibold tracking-normal">{title}</h2>
+                    <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
                 </div>
             </div>
-        </main>
+            <div className="space-y-4">{children}</div>
+        </section>
+    );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+        <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-normal text-slate-500">{label}</span>
+            {children}
+        </label>
+    );
+}
+
+function StatusBox({ message }: { message: string }) {
+    if (!message) return null;
+    return <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">{message}</div>;
+}
+
+function ObjectRow({ label, value, onCopy }: { label: string; value: string; onCopy: (value: string) => void }) {
+    if (!value) return null;
+    return (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+            <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase text-slate-500">{label}</div>
+                <div className="truncate font-mono text-xs text-slate-800">{value}</div>
+            </div>
+            <button aria-label={`Copy ${label}`} onClick={() => onCopy(value)} className="grid h-8 w-8 shrink-0 place-items-center rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100">
+                <Clipboard className="h-4 w-4" />
+            </button>
+        </div>
+    );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+            <span className="text-slate-500">{label}</span>
+            <span className="min-w-0 truncate font-mono text-xs text-slate-900">{value}</span>
+        </div>
+    );
+}
+
+function InfoStrip({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+    return (
+        <div className="flex gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-slate-100 text-slate-700">{icon}</div>
+            <div>
+                <h3 className="text-sm font-semibold">{title}</h3>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{body}</p>
+            </div>
+        </div>
     );
 }

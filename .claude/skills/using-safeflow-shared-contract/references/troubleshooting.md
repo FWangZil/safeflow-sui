@@ -18,13 +18,15 @@ sui client new-address ed25519
 sui client active-address
 ```
 
-## `Publish API URL is still placeholder`
+## `Producer API URL is invalid or unreachable`
 
-Replace:
+Default endpoint:
 
-- `https://PUBLISH_API_BASE_URL_PLACEHOLDER`
+- `https://producer.safeflow.space`
 
-with your actual endpoint.
+If your deployment uses another domain, pass:
+
+- `--publish-api-base-url <YOUR_API_URL>` (legacy flag name for Producer API base URL)
 
 ## `Walrus blob id is fallback:*`
 
@@ -40,8 +42,21 @@ Expected if queue is empty. Create one:
 
 ```bash
 cd agent_scripts
-npx tsx create_intent.ts --agent-address <AGENT> --wallet-id <WALLET> --session-cap-id <CAP> --recipient <RECIPIENT>
+bunx tsx create_intent.ts --agent-address <AGENT> --recipient <RECIPIENT> --execution-rail auto
 ```
+
+For guarded flow:
+
+```bash
+bunx tsx create_intent.ts --agent-address <AGENT> --wallet-id <WALLET> --session-cap-id <CAP> --recipient <RECIPIENT> --execution-rail auto
+```
+
+## Intent resolved to the wrong rail
+
+- Check final intent `executionRail`.
+- `native_gasless` requires `coinType` to be in Producer API `NATIVE_GASLESS_COIN_TYPES`.
+- Guarded flow requires `walletId/sessionCapId`, `--requires-guard`, or explicit `--execution-rail sponsored_guard`.
+- If sponsor fee reimbursement is expected, use guarded flow; native gasless does not call sponsor.
 
 ## `Cannot switch to agent address`
 

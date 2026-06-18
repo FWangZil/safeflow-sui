@@ -98,12 +98,14 @@ async function main() {
     const once = hasFlag('--once');
     const maxLoops = Number.parseInt(getArg('--max-loops') ?? process.env.SAFEFLOW_MAX_LOOPS ?? '0', 10);
     const maxAmountMist = Number.parseInt(process.env.SAFEFLOW_MAX_AMOUNT_MIST ?? '0', 10);
+    const maxAmountAtomic = Number.parseInt(process.env.SAFEFLOW_MAX_AMOUNT_ATOMIC ?? `${maxAmountMist}`, 10);
     const allowedRecipients = getAllowedRecipients();
 
     const agent = new SafeFlowAgent({
         network: 'testnet',
         packageId,
         secretKey: loadAgentSecret(),
+        ...(process.env.DEFAULT_COIN_TYPE ? { coinType: process.env.DEFAULT_COIN_TYPE } : {}),
     });
 
     const producer = new ProducerApiClient({
@@ -155,6 +157,7 @@ async function main() {
 
             if (isIntentExpired(intent)) {
                 await producer.reportIntentResult(intent.intentId, {
+                    agentAddress,
                     success: false,
                     errorCode: 'expired',
                     errorMessage: 'Intent is expired before execution.',
@@ -170,17 +173,20 @@ async function main() {
             if (allowedRecipients && !allowedRecipients.has(intent.recipient)) {
                 throw new Error(`Recipient ${intent.recipient} is not in SAFEFLOW_ALLOWED_RECIPIENTS`);
             }
-            if (maxAmountMist > 0 && intent.amountMist > maxAmountMist) {
-                throw new Error(`Amount ${intent.amountMist} exceeds SAFEFLOW_MAX_AMOUNT_MIST=${maxAmountMist}`);
+            const amountAtomic = intent.amountAtomic ?? intent.amountMist;
+            if (maxAmountAtomic > 0 && amountAtomic > maxAmountAtomic) {
+                throw new Error(`Amount ${amountAtomic} exceeds SAFEFLOW_MAX_AMOUNT_ATOMIC=${maxAmountAtomic}`);
             }
 
             await producer.ackIntent(intent.intentId, agentAddress, randomUUID());
 
-            const result = await agent.executePaymentWithEvidence({
+            const evidence = await agent.preparePaymentEvidence({
                 walletId: intent.walletId,
                 sessionCapId: intent.sessionCapId,
                 recipient: intent.recipient,
-                amount: intent.amountMist,
+                amountAtomic,
+                coinType: intent.coinType,
+                currencySymbol: intent.currencySymbol,
                 mode: 'intent-runner',
                 reasoning: intent.reason,
                 context: {
@@ -196,10 +202,19 @@ async function main() {
                 degradeOnUploadFailure: (process.env.WALRUS_DEGRADE_ON_UPLOAD_FAILURE ?? 'true').toLowerCase() !== 'false',
             });
 
+            const result: {
+                digest: string;
+                sponsorFeeAtomic?: number;
+                sponsorFeeRecipient?: string | null;
+            } = intent.executionRail === 'native_gasless'
+                ? await executeNativeGaslessPayment(agent, intent, amountAtomic)
+                : await executeSponsoredGuardPayment(producer, agent, intent.intentId, agentAddress, evidence.walrusBlobId);
+
             await producer.reportIntentResult(intent.intentId, {
+                agentAddress,
                 success: true,
                 txDigest: result.digest,
-                walrusBlobId: result.walrusBlobId,
+                walrusBlobId: evidence.walrusBlobId,
             });
 
             console.log(
@@ -207,9 +222,12 @@ async function main() {
                     {
                         intentId: intent.intentId,
                         status: 'executed',
+                        executionRail: intent.executionRail,
                         txDigest: result.digest,
-                        walrusBlobId: result.walrusBlobId,
-                        uploadStatus: result.uploadStatus,
+                        sponsorFeeAtomic: result.sponsorFeeAtomic,
+                        sponsorFeeRecipient: result.sponsorFeeRecipient,
+                        walrusBlobId: evidence.walrusBlobId,
+                        uploadStatus: evidence.uploadStatus,
                     },
                     null,
                     2,
@@ -219,6 +237,7 @@ async function main() {
             const errorCode = classifyErrorCode(error);
             const errorMessage = error instanceof Error ? error.message : String(error);
             await producer.reportIntentResult(intent.intentId, {
+                agentAddress,
                 success: false,
                 errorCode,
                 errorMessage,
@@ -232,6 +251,41 @@ async function main() {
 
         await sleep(pollMs);
     }
+}
+
+async function executeNativeGaslessPayment(
+    agent: SafeFlowAgent,
+    intent: PaymentIntent,
+    amountAtomic: number,
+): Promise<{ digest: string }> {
+    const result = await agent.executeNativeGaslessStablecoinTransfer({
+        recipient: intent.recipient,
+        amountAtomic,
+        coinType: intent.coinType,
+    });
+    return { digest: result.digest };
+}
+
+async function executeSponsoredGuardPayment(
+    producer: ProducerApiClient,
+    agent: SafeFlowAgent,
+    intentId: string,
+    agentAddress: string,
+    walrusBlobId: string,
+): Promise<{ digest: string; sponsorFeeAtomic?: number; sponsorFeeRecipient?: string | null }> {
+    const sponsor = await producer.requestSponsor(intentId, {
+        agentAddress,
+        walrusBlobId,
+    });
+    const result = await agent.signAndSubmitSponsoredTransaction(
+        sponsor.transactionBytes,
+        sponsor.sponsorSignature,
+    );
+    return {
+        digest: result.digest,
+        sponsorFeeAtomic: sponsor.sponsorFeeAtomic,
+        sponsorFeeRecipient: sponsor.sponsorFeeRecipient,
+    };
 }
 
 main().catch((error) => {

@@ -1,15 +1,14 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import type { ReactNode } from 'react';
 import './globals.css';
 import { Providers } from './providers';
 
-const inter = Inter({ subsets: ['latin'] });
 const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
 
 export const metadata: Metadata = {
     metadataBase: new URL(appUrl),
-    title: 'SafeFlow Sui - Agent Air-Gap Wallet',
-    description: 'Provide rate-limited, safely air-gapped hot wallets for AI agents on Sui.',
+    title: 'SafeFlow Sui - Gasless Agent Checkout',
+    description: 'A Sui checkout demo where AI agents spend stablecoins under SessionCap limits and sponsors pay execution gas.',
     icons: {
         icon: [
             { url: '/safeflow-logo-128.png', sizes: '128x128', type: 'image/png' },
@@ -41,11 +40,11 @@ export const metadata: Metadata = {
 export default function RootLayout({
     children,
 }: {
-    children: React.ReactNode;
+    children: ReactNode;
 }) {
     return (
         <html lang="en">
-            <body className={inter.className}>
+            <body>
                 <Providers>{children}</Providers>
             </body>
         </html>

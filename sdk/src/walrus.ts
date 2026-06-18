@@ -13,7 +13,10 @@ export interface WalrusReasoningPayload {
     walletId: string;
     sessionCapId: string;
     recipient: string;
+    amountAtomic?: number;
     amountMist: number;
+    coinType?: string;
+    currencySymbol?: string;
     mode: string;
     reasoning: string;
     context?: Record<string, unknown>;

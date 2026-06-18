@@ -20,5 +20,7 @@ npx clawhub@latest install safe-flow-sui-skill
 
 1. 本地 Sui CLI 启动与 Agent 地址准备，
 2. 主人协作式钱包/SessionCap 配置交接，
-3. 基于 `SessionCap` 的受控支付执行，
-4. 带 Walrus 证据上传的 Producer Intent 端到端测试。
+3. Producer API checkout 的 `executionRail=auto` 端到端测试，
+4. native gasless allowlisted stablecoin checkout，
+5. 基于 `AgentWallet<T>` / `SessionCap` 的 sponsored AgentPay Guard checkout，
+6. Walrus evidence 上传与执行结果回写。

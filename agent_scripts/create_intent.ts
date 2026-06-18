@@ -16,13 +16,22 @@ async function main() {
     const walletId = getArg('--wallet-id');
     const sessionCapId = getArg('--session-cap-id');
     const recipient = getArg('--recipient');
-    const amountRaw = getArg('--amount-mist') ?? '1000000';
+    const amountRaw = getArg('--amount-atomic') ?? getArg('--amount-mist') ?? '1000000';
+    const coinType = getArg('--coin-type') ?? process.env.DEFAULT_COIN_TYPE;
+    const executionRail = getArg('--execution-rail') ?? 'auto';
+    const currencySymbol = getArg('--currency-symbol') ?? process.env.DEFAULT_CURRENCY_SYMBOL ?? 'USDC';
     const reason = getArg('--reason') ?? 'SafeFlow API payment intent';
     const merchantOrderId = getArg('--order-id') ?? `order_${Date.now()}`;
     const ttlSecRaw = getArg('--ttl-sec') ?? '600';
 
-    if (!agentAddress || !walletId || !sessionCapId || !recipient) {
-        throw new Error('Missing required args: --agent-address --wallet-id --session-cap-id --recipient');
+    if (executionRail !== 'auto' && executionRail !== 'sponsored_guard' && executionRail !== 'native_gasless') {
+        throw new Error('--execution-rail must be auto, sponsored_guard, or native_gasless');
+    }
+    if (!agentAddress || !recipient) {
+        throw new Error('Missing required args: --agent-address --recipient');
+    }
+    if (executionRail === 'sponsored_guard' && (!walletId || !sessionCapId)) {
+        throw new Error('Missing required args for sponsored_guard: --wallet-id --session-cap-id');
     }
 
     const amountMist = Number.parseInt(amountRaw, 10);
@@ -43,11 +52,15 @@ async function main() {
     const intent = await producer.createIntent({
         merchantOrderId,
         agentAddress,
-        walletId,
-        sessionCapId,
+        ...(walletId ? { walletId } : {}),
+        ...(sessionCapId ? { sessionCapId } : {}),
         recipient,
+        amountAtomic: amountMist,
         amountMist,
-        currency: 'SUI',
+        ...(coinType ? { coinType } : {}),
+        executionRail,
+        currency: currencySymbol,
+        currencySymbol,
         reason,
         expiresAtMs: Date.now() + ttlSec * 1000,
         metadata: {

@@ -8,15 +8,32 @@ export type PaymentIntentStatus =
     | 'expired'
     | 'cancelled';
 
+export type ExecutionRail = 'sponsored_guard' | 'native_gasless';
+export type ExecutionRailSelection = ExecutionRail | 'auto';
+
+export const DEFAULT_COIN_TYPE = '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC';
+export const DEFAULT_CURRENCY_SYMBOL = 'USDC';
+export const DEFAULT_CURRENCY_DECIMALS = 6;
+
 export interface PaymentIntent {
     intentId: string;
+    checkoutSessionId?: string;
+    merchantId?: string;
     merchantOrderId: string;
     agentAddress: string;
-    walletId: string;
-    sessionCapId: string;
+    walletId: string | null;
+    sessionCapId: string | null;
     recipient: string;
+    amountAtomic: number;
     amountMist: number;
+    coinType: string;
+    executionRail: ExecutionRail;
+    requiresSponsor: boolean;
+    sponsorFeeAtomic?: number;
+    sponsorFeeRecipient?: string | null;
     currency: string;
+    currencySymbol: string;
+    decimals?: number;
     reason: string;
     metadata?: Record<string, unknown>;
     expiresAtMs: number;
@@ -36,17 +53,23 @@ export interface PaymentIntent {
 export interface CreatePaymentIntentInput {
     merchantOrderId: string;
     agentAddress: string;
-    walletId: string;
-    sessionCapId: string;
+    walletId?: string | null;
+    sessionCapId?: string | null;
     recipient: string;
-    amountMist: number;
+    amountAtomic?: number;
+    amountMist?: number;
+    coinType?: string;
+    executionRail?: ExecutionRailSelection;
     currency?: string;
+    currencySymbol?: string;
+    decimals?: number;
     reason: string;
     metadata?: Record<string, unknown>;
     expiresAtMs: number;
 }
 
 export interface ReportIntentResultInput {
+    agentAddress: string;
     success: boolean;
     txDigest?: string;
     walrusBlobId?: string;
@@ -62,15 +85,35 @@ export interface ProducerApiClientConfig {
     timeoutMs?: number;
 }
 
+export interface SponsorIntentInput {
+    agentAddress: string;
+    walrusBlobId: string;
+}
+
+export interface SponsorIntentResponse {
+    transactionBytes: string;
+    sponsorSignature: string;
+    gasBudget: number;
+    sponsorFeeAtomic: number;
+    sponsorFeeRecipient: string | null;
+}
+
 export interface IntentSignaturePayload {
     intentId: string;
     merchantOrderId: string;
     agentAddress: string;
-    walletId: string;
-    sessionCapId: string;
+    walletId: string | null;
+    sessionCapId: string | null;
     recipient: string;
+    amountAtomic: number;
     amountMist: number;
+    coinType: string;
+    executionRail: ExecutionRail;
+    requiresSponsor: boolean;
+    sponsorFeeAtomic: number;
+    sponsorFeeRecipient: string | null;
     currency: string;
+    currencySymbol: string;
     reason: string;
     expiresAtMs: number;
     metadata: Record<string, unknown> | null;
@@ -90,15 +133,33 @@ export class ProducerApiClient {
     }
 
     public async createIntent(input: CreatePaymentIntentInput): Promise<PaymentIntent> {
+        const amountAtomic = input.amountAtomic ?? input.amountMist;
+        if (!Number.isInteger(amountAtomic) || amountAtomic === undefined || amountAtomic <= 0) {
+            throw new Error('amountAtomic or amountMist must be a positive integer.');
+        }
         const payload = {
             ...input,
-            currency: input.currency ?? 'SUI',
+            amountAtomic,
+            amountMist: input.amountMist ?? amountAtomic,
+            coinType: input.coinType ?? DEFAULT_COIN_TYPE,
+            executionRail: input.executionRail ?? 'auto',
+            currency: input.currency ?? input.currencySymbol ?? DEFAULT_CURRENCY_SYMBOL,
+            currencySymbol: input.currencySymbol ?? input.currency ?? DEFAULT_CURRENCY_SYMBOL,
+            decimals: input.decimals ?? DEFAULT_CURRENCY_DECIMALS,
         };
         const response = await this.request<{ intent: PaymentIntent }>('/v1/intents', {
             method: 'POST',
             body: JSON.stringify(payload),
         });
         return response.intent;
+    }
+
+    public async requestSponsor(intentId: string, input: SponsorIntentInput): Promise<SponsorIntentResponse> {
+        const response = await this.request<{ sponsor: SponsorIntentResponse }>(`/v1/intents/${intentId}/sponsor`, {
+            method: 'POST',
+            body: JSON.stringify(input),
+        });
+        return response.sponsor;
     }
 
     public async fetchNextIntent(agentAddress: string): Promise<PaymentIntent | null> {
@@ -192,17 +253,26 @@ export class ProducerApiClient {
 export function buildIntentSignaturePayload(intent: Pick<
     PaymentIntent,
     | 'intentId'
+    | 'checkoutSessionId'
     | 'merchantOrderId'
     | 'agentAddress'
     | 'walletId'
     | 'sessionCapId'
     | 'recipient'
+    | 'amountAtomic'
     | 'amountMist'
+    | 'coinType'
+    | 'executionRail'
+    | 'requiresSponsor'
+    | 'sponsorFeeAtomic'
+    | 'sponsorFeeRecipient'
     | 'currency'
+    | 'currencySymbol'
     | 'reason'
     | 'expiresAtMs'
     | 'metadata'
 >): IntentSignaturePayload {
+    const amountAtomic = intent.amountAtomic ?? intent.amountMist;
     return {
         intentId: intent.intentId,
         merchantOrderId: intent.merchantOrderId,
@@ -210,8 +280,15 @@ export function buildIntentSignaturePayload(intent: Pick<
         walletId: intent.walletId,
         sessionCapId: intent.sessionCapId,
         recipient: intent.recipient,
-        amountMist: intent.amountMist,
+        amountAtomic,
+        amountMist: intent.amountMist ?? amountAtomic,
+        coinType: intent.coinType,
+        executionRail: intent.executionRail ?? 'sponsored_guard',
+        requiresSponsor: intent.requiresSponsor ?? true,
+        sponsorFeeAtomic: intent.sponsorFeeAtomic ?? 0,
+        sponsorFeeRecipient: intent.sponsorFeeRecipient ?? null,
         currency: intent.currency,
+        currencySymbol: intent.currencySymbol,
         reason: intent.reason,
         expiresAtMs: intent.expiresAtMs,
         metadata: intent.metadata ?? null,
@@ -275,6 +352,10 @@ export function createProducerApiSkills(client: ProducerApiClient): AgentTool[] 
                     type: 'boolean',
                     description: 'Whether the payment execution succeeded',
                 },
+                agentAddress: {
+                    type: 'string',
+                    description: 'Agent wallet address assigned to the intent.',
+                },
                 txDigest: {
                     type: 'string',
                     description: 'On-chain tx digest when success',
@@ -292,10 +373,11 @@ export function createProducerApiSkills(client: ProducerApiClient): AgentTool[] 
                     description: 'Failure message when success=false',
                 },
             },
-            required: ['intentId', 'success'],
+            required: ['intentId', 'agentAddress', 'success'],
         },
         execute: async (args: {
             intentId: string;
+            agentAddress: string;
             success: boolean;
             txDigest?: string;
             walrusBlobId?: string;
@@ -304,6 +386,7 @@ export function createProducerApiSkills(client: ProducerApiClient): AgentTool[] 
         }) => {
             try {
                 const intent = await client.reportIntentResult(args.intentId, {
+                    agentAddress: args.agentAddress,
                     success: args.success,
                     txDigest: args.txDigest,
                     walrusBlobId: args.walrusBlobId,

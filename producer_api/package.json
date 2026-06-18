@@ -5,6 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "node server.mjs",
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "seed:demo": "node scripts/seed_demo.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@mysten/sui.js": "^0.54.1",
+    "dotenv": "^17.3.1",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.6"
   }
 }

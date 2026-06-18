@@ -1,84 +1,68 @@
 # @safeflow/sui-sdk
 
-This is the Sui SDK and Agent Skill package for SafeFlow. It provides an easy way for AI Agents (like OpenClaw bots) to interact with SafeFlow's streaming payment sessions on the Sui blockchain.
+TypeScript SDK for SafeFlow Sui checkout agents.
 
-## Features
+## Current Execution Model
 
-- **SafeFlowAgent**: A core wrapper around Sui client and keys to authorize and execute SafeFlow sessions.
-- **OpenClaw Skill**: A ready-to-use tool definition (`createSafeFlowSkill`) that can be directly registered into agent frameworks.
-- **Walrus testnet integration**: Upload reasoning payloads to Walrus and pass real `walrus_blob_id` to on-chain payment events.
-- **Producer API Client**: `ProducerApiClient` for fetching/acking/reporting signed `PaymentIntent`s.
+The preferred flow is Producer API driven:
 
-## Installation
+1. Merchant creates a checkout session or direct intent.
+2. Producer API resolves `executionRail`:
+   - `auto` + allowlisted stablecoin without guard objects -> `native_gasless`
+   - `auto` + guard request or guard objects -> `sponsored_guard`
+3. Agent polls, verifies, ACKs, uploads Walrus evidence, executes, and reports result.
 
-You can install this SDK locally within the monorepo:
+Direct `executePaymentWithEvidence` still exists for guarded contract calls, but demo agents should normally use `ProducerApiClient` plus the runner flow.
+
+## Install In Monorepo
 
 ```bash
-npm install @safeflow/sui-sdk@file:../sdk
+bun install
+bun run build
+bun run test
 ```
 
-## Usage
+## Producer Client
 
-### As a standalone Agent
+```ts
+import { ProducerApiClient } from '@safeflow/sui-sdk';
 
-```typescript
-import { SafeFlowAgent } from '@safeflow/sui-sdk';
-
-const agent = new SafeFlowAgent({
-    network: 'testnet',
-    packageId: '0x_YOUR_PACKAGE_ID',
-    // Optionally provide an existing secret key (Uint8Array)
-    // secretKey: mySecretKey 
+const producer = new ProducerApiClient({
+  baseUrl: process.env.PRODUCER_API_BASE_URL!,
+  apiKey: process.env.PRODUCER_API_KEY,
+  signingSecret: process.env.PRODUCER_SIGNING_SECRET!,
 });
 
-console.log(`Agent Address: ${agent.getAddress()}`);
-
-// Execute payment and auto-upload evidence to Walrus (with fallback hash if enabled)
-const result = await agent.executePaymentWithEvidence({
-    walletId: '0x_WALLET_ID',
-    sessionCapId: '0x_SESSION_CAP_ID',
-    recipient: '0x_RECIPIENT_ADDRESS',
-    amount: 1000000, // Amount in MIST
-    reasoning: 'Paying for LLM API call',
-    mode: 'success',
-    walrusConfig: {
-        publisherUrl: 'https://publisher.walrus-testnet.walrus.space',
-        aggregatorUrl: 'https://aggregator.walrus-testnet.walrus.space',
-        epochs: 5,
-    },
-    degradeOnUploadFailure: true,
+const intent = await producer.createIntent({
+  merchantOrderId: 'order_001',
+  agentAddress: '0x...',
+  recipient: '0x...',
+  amountAtomic: 1_000_000,
+  coinType: '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC',
+  executionRail: 'auto',
+  currencySymbol: 'USDC',
+  reason: 'demo checkout',
+  expiresAtMs: Date.now() + 10 * 60 * 1000,
 });
-
-console.log('Payment executed!', result.digest, result.walrusBlobId, result.uploadStatus);
 ```
 
-### As an OpenClaw Skill
+For guarded execution, include `walletId` and `sessionCapId`, or set `executionRail: 'sponsored_guard'`.
 
-```typescript
+## Agent Execution Helpers
+
+- `executeNativeGaslessStablecoinTransfer(...)`: submit native Sui stablecoin gasless transfer.
+- `requestSponsor(...)` + `signAndSubmitSponsoredTransaction(...)`: submit dual-signed sponsored guard transaction.
+- `executePaymentWithEvidence(...)`: direct guarded contract payment with Walrus evidence, mainly for compatibility and low-level tests.
+
+## Skill Helpers
+
+```ts
 import {
   SafeFlowAgent,
-  createSafeFlowSkill,
+  ProducerApiClient,
   createProducerApiSkills,
-  ProducerApiClient
+  createSafeFlowSkill,
 } from '@safeflow/sui-sdk';
-import { Agent } from 'openclaw'; // Example agent framework
-
-const safeFlowAgent = new SafeFlowAgent({
-    network: 'testnet',
-    packageId: process.env.PACKAGE_ID
-});
-
-const safeFlowSkill = createSafeFlowSkill(safeFlowAgent);
-const producerClient = new ProducerApiClient({
-    baseUrl: process.env.PRODUCER_API_BASE_URL!,
-    signingSecret: process.env.PRODUCER_SIGNING_SECRET!,
-});
-const producerSkills = createProducerApiSkills(producerClient);
-
-const myBot = new Agent({
-    name: 'SafeFlowBot',
-    tools: [safeFlowSkill, ...producerSkills]
-});
-
-// The bot can now automatically execute SafeFlow payments when requested by the user!
 ```
+
+`createProducerApiSkills` exposes intent polling/result tools. `createSafeFlowSkill` exposes direct guarded payment execution for runtimes that still need the low-level path.

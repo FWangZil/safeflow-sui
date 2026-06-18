@@ -4,6 +4,8 @@ export interface SafeFlowAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
     packageId: string;
     secretKey?: string | Uint8Array | number[];
+    coinType?: string;
+    grpcBaseUrl?: string;
 }
 export interface SessionCapConfig {
     maxSpendPerSecond: number;
@@ -16,10 +18,13 @@ export interface SetupResult {
     agentAddress: string;
 }
 export interface ExecutePaymentWithEvidenceParams {
-    walletId: string;
-    sessionCapId: string;
+    walletId?: string | null;
+    sessionCapId?: string | null;
     recipient: string;
-    amount: number;
+    amount?: number;
+    amountAtomic?: number;
+    coinType?: string;
+    currencySymbol?: string;
     walrusBlobId?: string;
     reasoning?: string;
     context?: Record<string, unknown>;
@@ -36,11 +41,33 @@ export interface ExecutePaymentWithEvidenceResult {
     uploadError?: string;
     uploadResult?: WalrusUploadResult;
 }
+export interface PreparePaymentEvidenceResult {
+    walrusBlobId: string;
+    uploadStatus: 'provided' | 'uploaded' | 'fallback';
+    aggregatorUrl: string | null;
+    siteUrl: string | null;
+    uploadError?: string;
+    uploadResult?: WalrusUploadResult;
+}
+export interface SubmitSponsoredTransactionResult {
+    digest: string;
+}
+export interface ExecuteNativeGaslessStablecoinTransferParams {
+    recipient: string;
+    amountAtomic: number;
+    coinType?: string;
+}
+export interface ExecuteNativeGaslessStablecoinTransferResult {
+    digest: string;
+}
 export declare class SafeFlowAgent {
     private client;
+    private nativeGrpcClient?;
     private keypair;
     private packageId;
-    private suiCoinType;
+    private coinType;
+    private network;
+    private grpcBaseUrl?;
     constructor(config: SafeFlowAgentConfig);
     /**
      * Get the agent's Sui address
@@ -64,7 +91,7 @@ export declare class SafeFlowAgent {
      * Execute a payment using a SessionCap
      * This is the core skill that agents will use to execute payments
      */
-    executePayment(walletId: string, sessionCapId: string, recipient: string, amount: number, walrusBlobId: string): Promise<import("@mysten/sui.js/client").SuiTransactionBlockResponse>;
+    executePayment(walletId: string, sessionCapId: string, recipient: string, amount: number, walrusBlobId: string, coinType?: string): Promise<import("@mysten/sui.js/client").SuiTransactionBlockResponse>;
     /**
      * Upload reasoning payload to Walrus testnet and return the resolved blob metadata.
      */
@@ -74,6 +101,7 @@ export declare class SafeFlowAgent {
      * If upload fails and degradeOnUploadFailure is true, it falls back to a deterministic hash-based marker.
      */
     executePaymentWithEvidence(params: ExecutePaymentWithEvidenceParams): Promise<ExecutePaymentWithEvidenceResult>;
+    preparePaymentEvidence(params: ExecutePaymentWithEvidenceParams): Promise<PreparePaymentEvidenceResult>;
     /**
      * Request SUI from the testnet faucet
      */
@@ -82,10 +110,12 @@ export declare class SafeFlowAgent {
      * Get SUI balance for this agent
      */
     getBalance(): Promise<bigint>;
+    signAndSubmitSponsoredTransaction(transactionBytes: string, sponsorSignature: string): Promise<SubmitSponsoredTransactionResult>;
+    executeNativeGaslessStablecoinTransfer(params: ExecuteNativeGaslessStablecoinTransferParams): Promise<ExecuteNativeGaslessStablecoinTransferResult>;
 }
 /**
  * Auto-setup SafeFlow for a user
  * This handles the complete flow: create wallet -> create session cap for agent
  * Note: This requires the user to have SUI for gas fees
  */
-export declare function autoSetupSafeFlow(userKeypair: Ed25519Keypair, agentAddress: string, packageId: string, network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet', sessionConfig?: Partial<SessionCapConfig>): Promise<SetupResult>;
+export declare function autoSetupSafeFlow(userKeypair: Ed25519Keypair, agentAddress: string, packageId: string, network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet', sessionConfig?: Partial<SessionCapConfig>, coinType?: string): Promise<SetupResult>;

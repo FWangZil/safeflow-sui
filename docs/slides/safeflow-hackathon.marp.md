@@ -17,11 +17,11 @@ style: |
 
 # SafeFlow on Sui
 
-## Agent Wallet Air-Gap for OpenClaw
+## Gasless Checkout + AgentPay Guard for OpenClaw
 
 - Track focus: **Track 1 - Safety & Security**
 - Optional extension: **Track 2 - Local God Mode**
-- Stack: `Sui Move` + `Walrus` + `TypeScript SDK` + `Next.js Dashboard`
+- Stack: `Sui native gasless` + `Sui Move` + `Walrus` + `Producer API` + `Next.js Console`
 
 ## Problem
 
@@ -38,46 +38,38 @@ If a hot wallet key is exposed to agent runtime:
 
 ## Core Idea
 
-`Fund custody` and `execution permission` must be separated.
+Simple payments and guarded agent spend should use different rails.
 
-- Human funds stay in on-chain `AgentWallet` (shared object)
-- Agent only receives a scoped `SessionCap` (owned object)
-- Contract enforces:
-  - `max_spend_per_second`
-  - `max_spend_total`
-  - `expires_at_ms`
-- Every payment carries `walrus_blob_id` for post-incident audit trail
+- `native_gasless`: allowlisted stablecoin checkout, no agent SUI gas
+- `sponsored_guard`: `AgentWallet<T>` + `SessionCap` when limits are required
+- Producer API resolves `executionRail=auto`
+- Every execution reports `txDigest` + `walrus_blob_id`
 
-This is the wallet air-gap pattern on Sui object model.
+This is automatic least-privilege routing for agent payments.
 
 
 ## Architecture
 
 ```text
-┌──────────────┐      create_wallet/cap      ┌───────────────────────────┐
-│ Human Wallet │ ───────────────────────────► │ Sui: AgentWallet (shared) │
-└──────────────┘                              └──────────────┬────────────┘
-                                                             │
-                                        transfer SessionCap  │
-                                                             ▼
-                                                   ┌──────────────────┐
-                                                   │ Agent (OpenClaw) │
-                                                   │ local key only   │
-                                                   └─────────┬────────┘
-                                                             │
-                                     upload reasoning proof  │
-                                                             ▼
-                                                   ┌──────────────────┐
-                                                   │ Walrus / Seal    │
-                                                   └─────────┬────────┘
-                                                             │ blob id
-                                                             ▼
-                                          execute_payment(wallet, cap, ...)
-                                                             │
-                                                             ▼
-                                                   ┌──────────────────┐
-                                                   │ Recipient/Service│
-                                                   └──────────────────┘
+┌──────────────┐     checkout session      ┌─────────────────────┐
+│ Merchant     │ ────────────────────────► │ Producer API        │
+└──────────────┘                           │ executionRail=auto  │
+                                           └──────────┬──────────┘
+                                                      │
+                                      ┌───────────────┴───────────────┐
+                                      │                               │
+                                      ▼                               ▼
+                           ┌──────────────────┐          ┌────────────────────┐
+                           │ native_gasless   │          │ sponsored_guard    │
+                           │ stablecoin send  │          │ AgentWallet+Cap    │
+                           └────────┬─────────┘          └─────────┬──────────┘
+                                    │                              │
+                                    └──────────┬───────────────────┘
+                                               ▼
+                                   ┌──────────────────────┐
+                                   │ Merchant / evidence  │
+                                   │ txDigest + Walrus    │
+                                   └──────────────────────┘
 ```
 
 
@@ -94,8 +86,9 @@ sequenceDiagram
     participant Chain as Sui Testnet
     participant UI as Web Dashboard
 
-    Human->>Chain: create_wallet + create_session_cap + deposit
-    API->>API: create signed PaymentIntent (pending)
+    Human->>Chain: optional AgentWallet<T> + SessionCap setup
+    API->>API: create checkout session + signed PaymentIntent
+    API->>API: resolve executionRail=auto
     Agent->>API: GET /v1/intents/next?agentAddress=...
     API-->>Agent: next pending intent
     Agent->>Agent: verify signature + TTL + policy
@@ -109,9 +102,16 @@ sequenceDiagram
         Agent->>Agent: fallback:sha256(payload)
     end
 
-    Agent->>Contract: execute_payment(..., walrus_blob_id)
-    Contract->>Chain: transfer + emit PaymentExecuted
-    Chain-->>Agent: txDigest
+    alt native_gasless
+      Agent->>Chain: submit gasless stablecoin transfer
+      Chain-->>Agent: txDigest
+    else sponsored_guard
+      Agent->>API: request sponsor transaction
+      API-->>Agent: tx bytes + sponsor signature
+      Agent->>Contract: dual-signed execute_payment_with_fee<T>
+      Contract->>Chain: transfer + emit PaymentExecuted
+      Chain-->>Agent: txDigest
+    end
     Agent->>API: POST /v1/intents/{id}/result
     API->>API: claimed -> executed/failed/expired
     UI->>API: query intent by intentId
@@ -122,24 +122,26 @@ sequenceDiagram
 
 1. **Key isolation**
    - Agent never holds the human treasury private key.
-2. **Bounded damage**
-   - Rate + total + expiry limits enforced in Move.
+2. **Automatic rail choice**
+   - Simple stablecoin checkout uses native gasless.
+   - Guarded spend uses rate + total + expiry limits in Move.
 3. **Auditability**
-   - Payment event includes Walrus blob reference.
+   - Checkout audit trail includes Walrus blob reference.
 4. **Human oversight**
-   - Dashboard provisions allowance, not full control transfer.
+   - Dashboard provisions allowance only when Guard is needed.
 
 Expected outcome: injection can trigger actions, but cannot bypass on-chain limits.
 
 ## Demo Storyline (3-4 min)
 
-1. Build/test contract (`sui move test`)
-2. Human connects dashboard, creates `walletId` + `sessionCapId`
-3. Simulate malicious request:
+1. Create checkout session with `executionRail=auto`
+2. Show simple USDC payment resolving to native gasless
+3. Create guarded checkout with `requiresGuard=true`
+4. Simulate malicious request:
    - agent tries oversized/too-fast payment
    - transaction rejected by contract rules
-4. Legitimate small payment succeeds
-5. Show on-chain event and attached `walrus_blob_id`
+5. Legitimate guarded payment succeeds
+6. Show tx digest and attached `walrus_blob_id`
 
 Narrative: **"Allowed autonomy, denied abuse."**
 
@@ -155,15 +157,17 @@ Compared with account-abstraction-heavy approaches, implementation is simpler an
 ## Current Implementation Status
 
 - `agent_wallet/sources/wallet.move`
-  - `create_wallet`, `deposit`, `create_session_cap`, `execute_payment`
+  - `create_wallet`, `deposit`, `create_session_cap`, `execute_payment`, `execute_payment_with_fee`
 - `agent_wallet/tests/wallet_tests.move`
-  - unit test passes
-- `agent_scripts/index.ts`
-  - local key + SDK skill bootstrap
+  - generic coin, limit, expiry, insufficient balance coverage
+- `producer_api/server.mjs`
+  - checkout, intent, sponsor, Postgres migrations
+- `agent_scripts/e2e_runner.ts`
+  - auto rail execution
 - `web/src/app/page.tsx`
-  - human provisioning dashboard
+  - demo console + public checkout
 
-Demo is already runnable end-to-end in testnet setup.
+Demo is runnable end-to-end in testnet setup.
 
 ## Closing
 

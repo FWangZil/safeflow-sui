@@ -1,31 +1,36 @@
-# SafeFlow (Sui Edition) - Agent Air-Gap Wallet
+# SafeFlow (Sui Edition) - Gasless Checkout + AgentPay Guard
 
-**A smart agent "pocket money" and streaming payment protocol based on Sui and OpenClaw**
+**AI-agent-controlled spending with merchant stablecoin checkout on Sui**
 
 [中文版本 (Chinese Version)](./README_CN.md)
 
 ## Project Overview
 
-SafeFlow (Sui Edition) is an on-chain fund management and streaming payment protocol specifically designed for **AI Agents (such as OpenClaw)**. In today's world where agents are becoming increasingly autonomous, a key challenge is how to securely authorize funds to an agent while preventing malicious overspending due to attacks like Prompt Injection (The Wallet Air-Gap).
+SafeFlow (Sui Edition) is an on-chain checkout and controlled payment demo for **AI Agents (such as OpenClaw)**. The product goal is to let an agent complete stablecoin checkout autonomously while keeping treasury policy, spending limits, gas sponsorship, and audit evidence under operator control.
 
-This project leverages Sui's unique **Object Model** to solve this challenge by granting the agent a restricted `SessionCap` (session credential):
+Current execution is split into two rails:
 
-1. **Air-Gap Isolation**: Humans deposit funds into the `AgentWallet` shared object. The agent generates a private key locally and only holds the `SessionCap`.
-2. **Strict Rate Limiting**: The `SessionCap` enforces a "maximum spend per second" and a "total spending limit" for the agent. Even if the agent goes rogue, it cannot instantly drain the wallet.
-3. **Audit Trail with Walrus**: Agent scripts upload reasoning evidence to Walrus (testnet) before executing a payment. A degradation strategy is enabled by default; if the upload fails, it continues the payment with a `fallback:<sha256>` tag, ensuring the process is non-blocking and traceable.
+1. **Native gasless stablecoin checkout**: simple allowlisted stablecoin payments use Sui native gasless transfer, so the agent does not need SUI gas for that path.
+2. **Sponsored AgentPay Guard**: complex payments use `AgentWallet<T>` + `SessionCap` and a sponsor-paid `execute_payment<T>` / `execute_payment_with_fee<T>` transaction.
+3. **Walrus audit trail**: agent scripts upload reasoning evidence to Walrus before execution, or record `fallback:<sha256>` when degraded mode is enabled.
 
 ## OpenClaw Agent POV
 
-From the OpenClaw runtime perspective, SafeFlow is a controlled execution loop, not a hot-wallet transfer bot:
+From the OpenClaw runtime perspective, SafeFlow is a controlled checkout execution loop, not a hot-wallet transfer bot:
 
-1. Poll one assigned payment intent from Producer API.
+1. Poll one assigned checkout payment intent from Producer API.
 2. Verify signature + TTL + local policy (recipient/amount).
 3. ACK intent (`pending -> claimed`) to avoid duplicate consumption.
-4. Execute on-chain payment with `SessionCap` constraints.
-5. Upload reasoning to Walrus (or fallback marker when degraded).
-6. Report final result back to Producer API (`executed/failed/expired`).
+4. Upload reasoning to Walrus (or fallback marker when degraded).
+5. Execute by rail:
+   - `native_gasless`: submit a Sui native gasless stablecoin `balance::send_funds<CoinType>` transfer.
+   - `sponsored_guard`: request a sponsored guarded transaction from Producer API. When a sponsor fee is configured, the Move call is `execute_payment_with_fee<CoinType>` and the stablecoin fee is debited under the same `SessionCap`.
+6. Sign and submit the selected transaction path.
+7. Report final result back to Producer API (`executed/failed/expired`).
 
 Key point: **Agent autonomy is preserved, but treasury policy is never delegated to the agent.**
+
+Producer API defaults checkout creation to `executionRail: "auto"`: simple allowlisted stablecoin payments use native gasless, while requests marked `requiresGuard: true` or carrying guard object IDs resolve to sponsored `SessionCap` execution.
 
 ## Fast Verification Checklist
 
@@ -74,6 +79,7 @@ npx clawhub@latest install safe-flow-sui-skill
 
 - **Agent Security Isolation Wallet**: `AgentWallet` and `SessionCap` mechanism implemented in Sui Move.
 - **Second-Level Precision Rate Limiting**: Flow rate calculation based on Sui Clock timestamps (`max_spend_per_second`) within the Move contract.
+- **Dual Gasless Rails**: Simple allowlisted stablecoin checkout uses Sui native gasless transfer; complex AgentPay Guard checkout uses sponsored `SessionCap` execution with optional same-coin sponsor fee reimbursement.
 - **Auditable Payment Intent (Walrus Integration)**: Real uploads to Walrus with `walrus_blob_id` recorded in on-chain events, queryable by transaction digest in the frontend.
 - **Local Agent Execution**: Node.js/TypeScript scripts based on `@mysten/sui.js`, simulating OpenClaw agent running silently and paying on demand.
 - **Human Dashboard**: A frontend built with Next.js + Tailwind CSS + Sui dApp Kit for managing funds and authorizations.
@@ -101,7 +107,9 @@ npx clawhub@latest install safe-flow-sui-skill
 │   ├── e2e_runner.ts       # Poll/ack/execute/report intent runner
 │   ├── package.json
 │   └── tsconfig.json
-├── producer_api/           # Signed PaymentIntent producer API
+├── producer_api/           # Postgres checkout, intent, and sponsor API
+│   ├── migrations/
+│   ├── scripts/
 │   ├── server.mjs
 │   └── package.json
 ├── web/                    # Main dashboard for humans (Next.js)
@@ -162,37 +170,60 @@ Record the **Agent Address** printed in the console.
 
 *(In actual use, have the Human Dashboard grant a `SessionCap` to this address, then fill in `walletId/sessionCapId` in the script to execute real payments.)*
 
-### 3. Run Producer API (Payment Intent Producer)
+### 3. Run Producer API (Checkout + Sponsor Producer)
 
 ```bash
 cd producer_api
 
-export PRODUCER_SIGNING_SECRET=dev-secret-change-me
-# export PRODUCER_API_KEY=<OPTIONAL_WRITE_API_KEY>
+bun install
 
-node server.mjs
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/safeflow
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export PACKAGE_ID=<YOUR_PACKAGE_ID>
+export SPONSOR_SECRET_KEY=<SPONSOR_SUI_PRIVATE_KEY>
+export SPONSOR_FEE_BPS=100
+export SPONSOR_MIN_FEE_ATOMIC=0
+export SPONSOR_FEE_RECIPIENT=<SPONSOR_STABLECOIN_FEE_ADDRESS>
+export NATIVE_GASLESS_COIN_TYPES=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export NEXT_PUBLIC_APP_URL=http://localhost:3000
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export DEFAULT_CURRENCY_SYMBOL=USDC
+export DEFAULT_CURRENCY_DECIMALS=6
+export DEMO_PAYOUT_ADDRESS=<MERCHANT_PAYOUT_ADDRESS>
+export DEMO_AGENT_ADDRESS=<AGENT_ADDRESS>
+export DEMO_WALLET_ID=<WALLET_ID>
+export DEMO_SESSION_CAP_ID=<SESSION_CAP_ID>
+
+bun run migrate
+bun run seed:demo
+bun run dev
 ```
 
-### 4. Create Intent + Run Agent E2E Runner
+`seed:demo` prints the merchant API key once. Use it in the dashboard or checkout API as `x-api-key`.
+
+### 4. Create Checkout Session + Run Agent E2E Runner
 
 ```bash
 cd agent_scripts
 
 export PRODUCER_API_BASE_URL=http://localhost:8787
 export PRODUCER_SIGNING_SECRET=dev-secret-change-me
-# export PRODUCER_API_KEY=<OPTIONAL_WRITE_API_KEY>
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
 
-# Create a test intent
-npx tsx create_intent.ts \
-  --agent-address <AGENT_ADDRESS> \
-  --wallet-id <WALLET_ID> \
-  --session-cap-id <SESSION_CAP_ID> \
-  --recipient <RECIPIENT_ADDRESS> \
-  --amount-mist 1000000 \
-  --reason "demo e2e payment"
+# Create a checkout session from the web dashboard or:
+curl -X POST http://localhost:8787/v1/checkout/sessions \
+  -H "content-type: application/json" \
+  -H "x-api-key: <MERCHANT_API_KEY>" \
+  -d '{
+    "merchantOrderId": "order-demo-001",
+    "executionRail": "auto",
+    "amountAtomic": 1000000,
+    "reason": "demo USDC checkout"
+  }'
 
 # Run polling consumer
-npx tsx e2e_runner.ts --poll-ms 3000
+bun run typecheck
+bunx tsx e2e_runner.ts --poll-ms 3000
 ```
 
 ### 5. Run Human Dashboard (Frontend)
@@ -208,6 +239,7 @@ export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
 export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
 export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
 export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
+export NEXT_PUBLIC_DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
 
 # Run development server
 bun run dev
@@ -218,8 +250,9 @@ Open `http://localhost:3000` in your browser. Connect your Sui wallet, input the
 1. `create_wallet`
 2. `create_session_cap`
 
-You can then enter a payment transaction digest in the **Walrus Evidence Lookup** section to resolve and open the evidence link corresponding to the `walrus_blob_id`.
-You can also query `intentId` in **Producer Intent Observer** to track status (`pending/claimed/executed/failed`) and correlate `txDigest` + `walrus_blob_id`.
+You can create a merchant checkout session, leave the rail on `auto` or explicitly choose `native_gasless` / `sponsored_guard`, open the public `/checkout?sessionId=...` page, run the agent, and watch the session progress from `created/claimed` to `executed` with `txDigest` + `walrus_blob_id`.
+
+Use `native_gasless` for simple allowlisted stablecoin recipient transfers. Use `sponsored_guard` when you need `AgentWallet<T>` / `SessionCap` rate limits, total limits, expiry, and wallet binding.
 
 For a role-by-role sequence diagram and state machine, see [`docs/safeflow-e2e-role-flow.md`](./docs/safeflow-e2e-role-flow.md).
 

@@ -2,17 +2,21 @@ import { getFullnodeUrl, SuiClient } from '@mysten/sui.js/client';
 import { decodeSuiPrivateKey } from '@mysten/sui.js/cryptography';
 import { Ed25519Keypair } from '@mysten/sui.js/keypairs/ed25519';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
+import { fromB64 } from '@mysten/sui.js/utils';
 import {
     uploadJsonToWalrus,
     type WalrusClientConfig,
     type WalrusReasoningPayload,
     type WalrusUploadResult,
 } from './walrus.js';
+import { DEFAULT_COIN_TYPE } from './producer.js';
 
 export interface SafeFlowAgentConfig {
     network?: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
     packageId: string;
     secretKey?: string | Uint8Array | number[];
+    coinType?: string;
+    grpcBaseUrl?: string;
 }
 
 export interface SessionCapConfig {
@@ -28,10 +32,13 @@ export interface SetupResult {
 }
 
 export interface ExecutePaymentWithEvidenceParams {
-    walletId: string;
-    sessionCapId: string;
+    walletId?: string | null;
+    sessionCapId?: string | null;
     recipient: string;
-    amount: number;
+    amount?: number;
+    amountAtomic?: number;
+    coinType?: string;
+    currencySymbol?: string;
     walrusBlobId?: string;
     reasoning?: string;
     context?: Record<string, unknown>;
@@ -50,18 +57,48 @@ export interface ExecutePaymentWithEvidenceResult {
     uploadResult?: WalrusUploadResult;
 }
 
+export interface PreparePaymentEvidenceResult {
+    walrusBlobId: string;
+    uploadStatus: 'provided' | 'uploaded' | 'fallback';
+    aggregatorUrl: string | null;
+    siteUrl: string | null;
+    uploadError?: string;
+    uploadResult?: WalrusUploadResult;
+}
+
+export interface SubmitSponsoredTransactionResult {
+    digest: string;
+}
+
+export interface ExecuteNativeGaslessStablecoinTransferParams {
+    recipient: string;
+    amountAtomic: number;
+    coinType?: string;
+}
+
+export interface ExecuteNativeGaslessStablecoinTransferResult {
+    digest: string;
+}
+
 export class SafeFlowAgent {
     private client: SuiClient;
+    private nativeGrpcClient?: any;
     private keypair: Ed25519Keypair;
     private packageId: string;
-    private suiCoinType = '0x2::sui::SUI';
+    private coinType: string;
+    private network: 'testnet' | 'mainnet' | 'devnet' | 'localnet';
+    private grpcBaseUrl?: string;
 
     constructor(config: SafeFlowAgentConfig) {
+        const network = config.network || 'testnet';
+        this.network = network;
+        this.grpcBaseUrl = config.grpcBaseUrl;
         this.client = new SuiClient({
-            url: getFullnodeUrl(config.network || 'testnet')
+            url: getFullnodeUrl(network)
         });
 
         this.packageId = config.packageId;
+        this.coinType = config.coinType ?? DEFAULT_COIN_TYPE;
 
         if (config.secretKey !== undefined) {
             const secretKeyBytes = normalizeSecretKey(config.secretKey);
@@ -94,7 +131,7 @@ export class SafeFlowAgent {
 
         txb.moveCall({
             target: `${this.packageId}::wallet::create_wallet`,
-            typeArguments: [this.suiCoinType],
+            typeArguments: [this.coinType],
             arguments: []
         });
 
@@ -136,7 +173,7 @@ export class SafeFlowAgent {
 
         txb.moveCall({
             target: `${this.packageId}::wallet::create_session_cap`,
-            typeArguments: [this.suiCoinType],
+            typeArguments: [this.coinType],
             arguments: [
                 txb.object(walletId),
                 txb.pure(agentAddress),
@@ -181,13 +218,14 @@ export class SafeFlowAgent {
         sessionCapId: string,
         recipient: string,
         amount: number,
-        walrusBlobId: string
+        walrusBlobId: string,
+        coinType = this.coinType,
     ) {
         const txb = new TransactionBlock();
 
         txb.moveCall({
             target: `${this.packageId}::wallet::execute_payment`,
-            typeArguments: [this.suiCoinType],
+            typeArguments: [coinType],
             arguments: [
                 txb.object(walletId),
                 txb.object(sessionCapId),
@@ -234,17 +272,48 @@ export class SafeFlowAgent {
     public async executePaymentWithEvidence(
         params: ExecutePaymentWithEvidenceParams,
     ): Promise<ExecutePaymentWithEvidenceResult> {
-        const degradeOnUploadFailure = params.degradeOnUploadFailure ?? true;
+        const amountAtomic = resolveAmountAtomic(params);
+        const { walletId, sessionCapId } = requireGuardObjects(params);
         if (params.walrusBlobId && params.walrusBlobId.trim().length > 0) {
             const result = await this.executePayment(
-                params.walletId,
-                params.sessionCapId,
+                walletId,
+                sessionCapId,
                 params.recipient,
-                params.amount,
+                amountAtomic,
                 params.walrusBlobId,
+                params.coinType ?? this.coinType,
             );
             return {
                 digest: result.digest,
+                walrusBlobId: params.walrusBlobId,
+                uploadStatus: 'provided',
+                aggregatorUrl: null,
+                siteUrl: null,
+            };
+        }
+
+        const evidence = await this.preparePaymentEvidence(params);
+        const txResult = await this.executePayment(
+            walletId,
+            sessionCapId,
+            params.recipient,
+            amountAtomic,
+            evidence.walrusBlobId,
+            params.coinType ?? this.coinType,
+        );
+        return {
+            digest: txResult.digest,
+            ...evidence,
+        };
+    }
+
+    public async preparePaymentEvidence(
+        params: ExecutePaymentWithEvidenceParams,
+    ): Promise<PreparePaymentEvidenceResult> {
+        const degradeOnUploadFailure = params.degradeOnUploadFailure ?? true;
+        const amountAtomic = resolveAmountAtomic(params);
+        if (params.walrusBlobId && params.walrusBlobId.trim().length > 0) {
+            return {
                 walrusBlobId: params.walrusBlobId,
                 uploadStatus: 'provided',
                 aggregatorUrl: null,
@@ -256,10 +325,13 @@ export class SafeFlowAgent {
             version: '1.0.0',
             timestampMs: Date.now(),
             agentAddress: this.getAddress(),
-            walletId: params.walletId,
-            sessionCapId: params.sessionCapId,
+            walletId: params.walletId ?? 'native-gasless',
+            sessionCapId: params.sessionCapId ?? 'native-gasless',
             recipient: params.recipient,
-            amountMist: params.amount,
+            amountMist: amountAtomic,
+            amountAtomic,
+            coinType: params.coinType ?? this.coinType,
+            currencySymbol: params.currencySymbol,
             mode: params.mode ?? 'payment',
             reasoning: params.reasoning ?? 'SafeFlow payment execution',
             context: params.context,
@@ -267,15 +339,7 @@ export class SafeFlowAgent {
 
         try {
             const uploadResult = await this.uploadReasoningToWalrus(payload, params.walrusConfig);
-            const txResult = await this.executePayment(
-                params.walletId,
-                params.sessionCapId,
-                params.recipient,
-                params.amount,
-                uploadResult.blobId,
-            );
             return {
-                digest: txResult.digest,
                 walrusBlobId: uploadResult.blobId,
                 uploadStatus: 'uploaded',
                 aggregatorUrl: uploadResult.aggregatorUrl,
@@ -287,15 +351,7 @@ export class SafeFlowAgent {
                 throw new Error(`SafeFlow execution failed: ${error?.message ?? String(error)}`);
             }
             const fallbackBlobId = await buildFallbackWalrusBlobId(payload);
-            const txResult = await this.executePayment(
-                params.walletId,
-                params.sessionCapId,
-                params.recipient,
-                params.amount,
-                fallbackBlobId,
-            );
             return {
-                digest: txResult.digest,
                 walrusBlobId: fallbackBlobId,
                 uploadStatus: 'fallback',
                 aggregatorUrl: null,
@@ -331,10 +387,76 @@ export class SafeFlowAgent {
     public async getBalance(): Promise<bigint> {
         const coins = await this.client.getCoins({
             owner: this.getAddress(),
-            coinType: this.suiCoinType
+            coinType: this.coinType
         });
 
         return coins.data.reduce((acc, coin) => acc + BigInt(coin.balance), BigInt(0));
+    }
+
+    public async signAndSubmitSponsoredTransaction(
+        transactionBytes: string,
+        sponsorSignature: string,
+    ): Promise<SubmitSponsoredTransactionResult> {
+        const bytes = fromB64(transactionBytes);
+        const { signature } = await this.keypair.signTransactionBlock(bytes);
+        const result = await this.client.executeTransactionBlock({
+            transactionBlock: bytes,
+            signature: [signature, sponsorSignature],
+            options: {
+                showEffects: true,
+                showEvents: true,
+            },
+        });
+        return { digest: result.digest };
+    }
+
+    public async executeNativeGaslessStablecoinTransfer(
+        params: ExecuteNativeGaslessStablecoinTransferParams,
+    ): Promise<ExecuteNativeGaslessStablecoinTransferResult> {
+        const amountAtomic = params.amountAtomic;
+        if (!Number.isInteger(amountAtomic) || amountAtomic <= 0) {
+            throw new Error('amountAtomic must be a positive integer.');
+        }
+        const [{ SuiGrpcClient }, { Ed25519Keypair: NativeEd25519Keypair }, { Transaction: NativeTransaction }] = await Promise.all([
+            importRuntime('@mysten/sui/grpc'),
+            importRuntime('@mysten/sui/keypairs/ed25519'),
+            importRuntime('@mysten/sui/transactions'),
+        ]);
+        const coinType = params.coinType ?? this.coinType;
+        const tx = new NativeTransaction();
+        tx.setSender(this.getAddress());
+        tx.moveCall({
+            target: '0x2::balance::send_funds',
+            typeArguments: [coinType],
+            arguments: [
+                tx.balance({ type: coinType, balance: BigInt(amountAtomic) }),
+                tx.pure.address(params.recipient),
+            ],
+        });
+
+        const nativeGrpcClient = this.nativeGrpcClient ?? new SuiGrpcClient({
+            network: this.network,
+            baseUrl: this.grpcBaseUrl ?? getDefaultGrpcBaseUrl(this.network),
+        });
+        const nativeKeypair = NativeEd25519Keypair.fromSecretKey(this.keypair.getSecretKey());
+        const result: any = await nativeGrpcClient.signAndExecuteTransaction({
+            transaction: tx,
+            signer: nativeKeypair,
+            include: {
+                transaction: true,
+                effects: true,
+                events: true,
+            },
+        });
+
+        const digest = result.digest
+            ?? result.transaction?.digest
+            ?? result.effects?.transactionDigest
+            ?? result.effects?.transactionDigest?.digest;
+        if (typeof digest !== 'string' || digest.length === 0) {
+            throw new Error('Native gasless transfer executed but no digest was returned.');
+        }
+        return { digest };
     }
 }
 
@@ -348,13 +470,15 @@ export async function autoSetupSafeFlow(
     agentAddress: string,
     packageId: string,
     network: 'testnet' | 'mainnet' | 'devnet' | 'localnet' = 'testnet',
-    sessionConfig?: Partial<SessionCapConfig>
+    sessionConfig?: Partial<SessionCapConfig>,
+    coinType = DEFAULT_COIN_TYPE,
 ): Promise<SetupResult> {
     const secretKeyBytes = userKeypair.getSecretKey();
     const userAgent = new SafeFlowAgent({
         network,
         packageId,
-        secretKey: secretKeyBytes
+        secretKey: secretKeyBytes,
+        coinType,
     });
 
     // Create wallet
@@ -423,3 +547,30 @@ async function buildFallbackWalrusBlobId(payload: WalrusReasoningPayload): Promi
         .join('');
     return `fallback:${hash}`;
 }
+
+function resolveAmountAtomic(params: ExecutePaymentWithEvidenceParams): number {
+    const amount = params.amountAtomic ?? params.amount;
+    if (!Number.isInteger(amount) || amount === undefined || amount <= 0) {
+        throw new Error('amountAtomic or amount must be a positive integer.');
+    }
+    return amount;
+}
+
+function requireGuardObjects(params: ExecutePaymentWithEvidenceParams): { walletId: string; sessionCapId: string } {
+    if (!params.walletId || !params.sessionCapId) {
+        throw new Error('walletId and sessionCapId are required for sponsored_guard execution.');
+    }
+    return {
+        walletId: params.walletId,
+        sessionCapId: params.sessionCapId,
+    };
+}
+
+function getDefaultGrpcBaseUrl(network: 'testnet' | 'mainnet' | 'devnet' | 'localnet'): string {
+    if (network === 'localnet') {
+        return 'http://127.0.0.1:9000';
+    }
+    return `https://fullnode.${network}.sui.io:443`;
+}
+
+const importRuntime = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<any>;

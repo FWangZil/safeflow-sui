@@ -7,14 +7,14 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@mysten/sui": "^1.21.1",
+    "@mysten/sui": "^2.18.0",
     "@mysten/sui.js": "^0.54.1"
   },
   "devDependencies": {
     "@types/node": "^25.3.2",
-    "typescript": "^5.0.0"
+    "typescript": "^6.0.3"
   }
 }

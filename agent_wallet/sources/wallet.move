@@ -51,6 +51,13 @@ module agent_wallet::wallet {
         walrus_blob_id: String, // Audit trail
     }
 
+    public struct SponsorFeePaid has copy, drop {
+        wallet_id: ID,
+        amount: u64,
+        recipient: address,
+        walrus_blob_id: String,
+    }
+
     // === Public Functions ===
 
     /// Creates a new Agent Wallet and shares it.
@@ -116,6 +123,65 @@ module agent_wallet::wallet {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
+        authorize_spend(wallet, cap, amount, clock);
+
+        // Extract funds
+        let payment_coin = coin::take(&mut wallet.balance, amount, ctx);
+        transfer::public_transfer(payment_coin, recipient);
+
+        event::emit(PaymentExecuted {
+            wallet_id: object::id(wallet),
+            amount,
+            recipient,
+            walrus_blob_id,
+        });
+    }
+
+    /// Agent pays a merchant and reimburses the sponsor in the same stablecoin.
+    /// The merchant amount and sponsor fee are checked together against SessionCap limits.
+    public fun execute_payment_with_fee<T>(
+        wallet: &mut AgentWallet<T>,
+        cap: &mut SessionCap,
+        amount: u64,
+        recipient: address,
+        sponsor_fee_amount: u64,
+        sponsor_fee_recipient: address,
+        walrus_blob_id: String,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let total_amount = amount + sponsor_fee_amount;
+        authorize_spend(wallet, cap, total_amount, clock);
+
+        let payment_coin = coin::take(&mut wallet.balance, amount, ctx);
+        transfer::public_transfer(payment_coin, recipient);
+
+        if (sponsor_fee_amount > 0) {
+            let fee_coin = coin::take(&mut wallet.balance, sponsor_fee_amount, ctx);
+            transfer::public_transfer(fee_coin, sponsor_fee_recipient);
+
+            event::emit(SponsorFeePaid {
+                wallet_id: object::id(wallet),
+                amount: sponsor_fee_amount,
+                recipient: sponsor_fee_recipient,
+                walrus_blob_id,
+            });
+        };
+
+        event::emit(PaymentExecuted {
+            wallet_id: object::id(wallet),
+            amount,
+            recipient,
+            walrus_blob_id,
+        });
+    }
+
+    fun authorize_spend<T>(
+        wallet: &AgentWallet<T>,
+        cap: &mut SessionCap,
+        amount: u64,
+        clock: &Clock,
+    ) {
         let current_time = clock::timestamp_ms(clock);
 
         // 1. Check expiration
@@ -138,16 +204,5 @@ module agent_wallet::wallet {
         // Update state
         cap.total_spent = cap.total_spent + amount;
         cap.last_spend_time_ms = current_time;
-
-        // Extract funds
-        let payment_coin = coin::take(&mut wallet.balance, amount, ctx);
-        transfer::public_transfer(payment_coin, recipient);
-
-        event::emit(PaymentExecuted {
-            wallet_id: object::id(wallet),
-            amount,
-            recipient,
-            walrus_blob_id,
-        });
     }
 }

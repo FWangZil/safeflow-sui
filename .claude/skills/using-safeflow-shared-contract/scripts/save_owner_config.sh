@@ -8,12 +8,14 @@ ENV_FILE="$SCRIPT_DIR/.safeflow-owner.env"
 
 DEFAULT_PACKAGE_ID="0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191"
 DEFAULT_NETWORK="testnet"
-DEFAULT_PRODUCER_BASE_URL="http://localhost:8787"
-DEFAULT_PUBLISH_API_URL="https://PUBLISH_API_BASE_URL_PLACEHOLDER"
+DEFAULT_PRODUCER_BASE_URL="https://producer.safeflow.space"
+DEFAULT_PUBLISH_API_URL="https://producer.safeflow.space"
 DEFAULT_WALRUS_PUBLISHER="https://publisher.walrus-testnet.walrus.space"
 DEFAULT_WALRUS_AGGREGATOR="https://aggregator.walrus-testnet.walrus.space"
 DEFAULT_WALRUS_EPOCHS="5"
 DEFAULT_WALRUS_DEGRADE="true"
+DEFAULT_COIN_TYPE="0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC"
+DEFAULT_CURRENCY_SYMBOL="USDC"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 info()    { echo -e "${BLUE}[owner-config]${NC} $*"; }
@@ -38,6 +40,8 @@ Options:
   --package-id <id>                SafeFlow package id (default: shared package)
   --agent-address <address>        Agent address (default: .agent-address.txt)
   --network <name>                 Sui env (default: testnet)
+  --coin-type <type>               Coin type (default: Circle Sui testnet USDC)
+  --currency-symbol <symbol>       Currency symbol (default: USDC)
   --producer-api-base-url <url>    Producer/Publish API base URL
   --publish-api-base-url <url>     Publish API base URL placeholder for tests
   --walrus-publisher <url>         Walrus publisher endpoint
@@ -57,6 +61,8 @@ SESSION_CAP_ID=""
 PACKAGE_ID="$DEFAULT_PACKAGE_ID"
 AGENT_ADDRESS=""
 NETWORK="$DEFAULT_NETWORK"
+COIN_TYPE="$DEFAULT_COIN_TYPE"
+CURRENCY_SYMBOL="$DEFAULT_CURRENCY_SYMBOL"
 PRODUCER_API_BASE_URL="$DEFAULT_PRODUCER_BASE_URL"
 PUBLISH_API_BASE_URL="$DEFAULT_PUBLISH_API_URL"
 WALRUS_PUBLISHER_URL="$DEFAULT_WALRUS_PUBLISHER"
@@ -76,6 +82,8 @@ while [[ $# -gt 0 ]]; do
         --package-id) PACKAGE_ID="${2:-}"; shift 2 ;;
         --agent-address) AGENT_ADDRESS="${2:-}"; shift 2 ;;
         --network) NETWORK="${2:-}"; shift 2 ;;
+        --coin-type) COIN_TYPE="${2:-}"; shift 2 ;;
+        --currency-symbol) CURRENCY_SYMBOL="${2:-}"; shift 2 ;;
         --producer-api-base-url) PRODUCER_API_BASE_URL="${2:-}"; shift 2 ;;
         --publish-api-base-url) PUBLISH_API_BASE_URL="${2:-}"; shift 2 ;;
         --walrus-publisher) WALRUS_PUBLISHER_URL="${2:-}"; shift 2 ;;
@@ -145,7 +153,9 @@ cat > "$CONFIG_FILE" <<EOF
   "sessionCapId": "$SESSION_CAP_ID",
   "agentAddress": "$AGENT_ADDRESS",
   "userAddress": "$USER_ADDRESS",
-  "network": "$NETWORK"
+  "network": "$NETWORK",
+  "coinType": "$COIN_TYPE",
+  "currencySymbol": "$CURRENCY_SYMBOL"
 }
 EOF
 
@@ -156,6 +166,9 @@ WALLET_ID=$WALLET_ID
 SESSION_CAP_ID=$SESSION_CAP_ID
 AGENT_ADDRESS=$AGENT_ADDRESS
 NETWORK=$NETWORK
+DEFAULT_COIN_TYPE=$COIN_TYPE
+DEFAULT_CURRENCY_SYMBOL=$CURRENCY_SYMBOL
+NATIVE_GASLESS_COIN_TYPES=$COIN_TYPE
 
 PRODUCER_API_BASE_URL=$PRODUCER_API_BASE_URL
 PUBLISH_API_BASE_URL=$PUBLISH_API_BASE_URL
@@ -173,10 +186,11 @@ echo "  Package ID:  $PACKAGE_ID"
 echo "  Wallet ID:   $WALLET_ID"
 echo "  SessionCap:  $SESSION_CAP_ID"
 echo "  Agent:       $AGENT_ADDRESS"
+echo "  Coin type:   $COIN_TYPE"
 echo ""
 echo "Next:"
-echo "  ./execute_payment.sh --recipient <RECIPIENT_ADDRESS> --amount 1000000"
 echo "  ./test_publish_api_flow.sh --publish-api-base-url <API_URL> --recipient <RECIPIENT_ADDRESS>"
+echo "  ./test_publish_api_flow.sh --publish-api-base-url <API_URL> --recipient <RECIPIENT_ADDRESS> --requires-guard"
 
 if [[ "$SYNC_SQL" == true ]]; then
     info "Syncing package id to SQL..."

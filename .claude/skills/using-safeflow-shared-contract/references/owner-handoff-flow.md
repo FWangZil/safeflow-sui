@@ -1,11 +1,11 @@
 # Owner-Handoff Flow (Shared Contract)
 
-Use this flow for realistic production-like operation where owner controls provisioning, and agent only executes under SafeFlow constraints.
+Use this flow for realistic demo operation where owner controls guarded provisioning, and agent executes under Producer API policy plus SafeFlow guard constraints when a guard is required.
 
 ## Roles
 
-- Owner (human): funds gas, completes web provisioning, returns wallet/session ids.
-- Agent: consumes producer intents and executes controlled on-chain payments.
+- Owner (human): completes web provisioning, stablecoin predeposit, and returns wallet/session ids for guarded flows.
+- Agent: consumes producer intents and executes either native gasless stablecoin transfer or sponsored guarded payment.
 
 ## Step-by-Step
 
@@ -15,13 +15,13 @@ Use this flow for realistic production-like operation where owner controls provi
 cd .claude/skills/safe-flow-sui-skill/scripts
 ./bootstrap_owner_handoff.sh \
   --package-id 0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191 \
-  --portal-url https://SAFEFLOW_OWNER_PORTAL_URL_PLACEHOLDER
+  --portal-url https://dash.safeflow.space
 ```
 
 2. Tell owner to do:
-- transfer gas to `agentAddress`;
+- transfer SUI gas to `agentAddress` only if the local runner must submit direct/non-gasless transactions;
 - open the portal URL;
-- complete wallet pre-deposit and SessionCap provisioning;
+- complete stablecoin wallet predeposit and SessionCap provisioning;
 - return `walletId` and `sessionCapId`.
 
 3. Persist owner return values:
@@ -29,7 +29,8 @@ cd .claude/skills/safe-flow-sui-skill/scripts
 ```bash
 ./save_owner_config.sh \
   --wallet-id <WALLET_ID> \
-  --session-cap-id <SESSION_CAP_ID>
+  --session-cap-id <SESSION_CAP_ID> \
+  --coin-type 0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
 ```
 
 4. Optional package id SQL sync:
@@ -38,15 +39,18 @@ cd .claude/skills/safe-flow-sui-skill/scripts
 ./sync_package_id_to_sql.sh --driver sqlite
 ```
 
-5. Execute controlled payment:
+5. Execute Producer API test flow:
 
 ```bash
-./execute_payment.sh --recipient <RECIPIENT_ADDRESS> --amount 1000000
+./test_publish_api_flow.sh --recipient <RECIPIENT_ADDRESS>
+./test_publish_api_flow.sh --recipient <RECIPIENT_ADDRESS> --requires-guard
 ```
+
+The first command lets Producer API auto-select the rail. The second command includes guard objects and exercises sponsored `SessionCap` execution.
 
 ## Produced Local Artifacts
 
 - `.agent-address.txt`: agent execution address.
 - `.owner-handoff.json`: owner-facing context and checklist.
-- `.safeflow-config.json`: runtime config used by `execute_payment.sh`.
+- `.safeflow-config.json`: runtime config used by Producer API test helpers.
 - `.safeflow-owner.env`: env exports for runner/test commands.

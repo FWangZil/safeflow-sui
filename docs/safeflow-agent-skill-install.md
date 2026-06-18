@@ -20,5 +20,7 @@ After installation, the agent can run SafeFlow workflows including:
 
 1. local Sui CLI bootstrap and agent wallet/address preparation,
 2. owner-assisted wallet/session provisioning handoff,
-3. controlled payment execution with `SessionCap`,
-4. producer intent E2E tests with Walrus evidence upload.
+3. Producer API checkout E2E tests with `executionRail=auto`,
+4. native gasless allowlisted stablecoin checkout,
+5. sponsored AgentPay Guard checkout with `AgentWallet<T>` / `SessionCap`,
+6. Walrus evidence upload and result reporting.

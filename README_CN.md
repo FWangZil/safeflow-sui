@@ -1,40 +1,38 @@
-# SafeFlow (Sui Edition) - Agent Air-Gap Wallet
+# SafeFlow (Sui Edition) - Gasless Checkout + AgentPay Guard
 
-**基于 Sui 和 OpenClaw 的智能体专属“零花钱”与流支付协议**
+**基于 Sui 和 OpenClaw 的 AI Agent 可控花钱 + 商户稳定币收款 demo**
 
 [English Version](./README.md)
 
 ## 项目概述
 
-SafeFlow (Sui Edition) 是一个专门为 **AI Agent (如 OpenClaw)** 设计的链上资金管理与流支付协议。在 Agent 变得越来越自治的今天，如何安全地给 Agent 授权资金，同时又防止由于 Prompt Injection 等攻击导致 Agent 恶意挥霍资金，成为了一个关键挑战（The Wallet Air-Gap）。
+SafeFlow (Sui Edition) 是面向 **AI Agent（如 OpenClaw）** 的链上 checkout 与受控支付协议。它解决的问题是：既让 Agent 能自动完成稳定币支付，又不把人类主钱包私钥或无限额度交给 Agent。
 
-本项目利用 Sui 独特的**对象模型 (Object Model)**，通过赋予 Agent 一个受限的 `SessionCap`（会话凭证），完美解决了这个挑战：
+当前实现支持两条 gasless rail：
 
-1. **资金隔离 (Air-Gap)**: 人类将资金存入 `AgentWallet` 共享对象，Agent 本地生成私钥，只持有 `SessionCap`。
-2. **严格的速率限制**: `SessionCap` 强制规定了 Agent 的“每秒最大花费”和“总花费上限”。即使 Agent 暴走，也无法瞬间抽干钱包。
-3. **结合 Walrus 的审计追踪**: Agent 脚本会先将推理证据上传到 Walrus（testnet）再执行支付；默认开启降级策略，上传失败时会用 `fallback:<sha256>` 标记继续支付，保证流程不中断且可追踪。
+1. **Native gasless stablecoin**：简单 allowlisted stablecoin 转账走 Sui native gasless，适合普通商户 P2P checkout。
+2. **Sponsored AgentPay Guard**：需要 `SessionCap` 限额、总额、过期时间或 sponsor fee reimbursement 时，Producer API 构造 sponsored `execute_payment<T>` / `execute_payment_with_fee<T>`，Agent 追加签名并双签提交。
+
+默认稳定币为 Circle Sui testnet USDC：
+
+```text
+0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+```
 
 ## OpenClaw Agent 视角
 
-从 OpenClaw 运行时看，SafeFlow 不是“拿热钱包直接转账”，而是受控执行循环：
+从 OpenClaw runtime 看，SafeFlow 是受控 checkout 执行循环，不是热钱包转账脚本：
 
-1. 从 Producer API 拉取分配给自己的支付意图。
+1. 从 Producer API 拉取分配给自己的 checkout payment intent。
 2. 验签 + TTL + 本地策略（收款地址/金额）校验。
 3. ACK 意图（`pending -> claimed`），避免重复消费。
-4. 基于 `SessionCap` 约束执行链上支付。
-5. 上传推理证据到 Walrus（若降级则记录 `fallback:` 标记）。
+4. 上传推理证据到 Walrus；如果允许降级，则记录 `fallback:<sha256>`。
+5. 根据 Producer API 解析出的 `executionRail` 自动执行：
+   - `native_gasless`：提交 Sui native gasless `balance::send_funds<CoinType>` 稳定币转账。
+   - `sponsored_guard`：请求 sponsor 交易字节，Agent 签名后与 sponsor 签名一起提交。
 6. 回写执行结果到 Producer API（`executed/failed/expired`）。
 
-关键信息：**Agent 保留执行自治，但资金策略从未交给 Agent 决定。**
-
-## Agent 流程清单
-
-Agent 可以在几分钟内完成闭环验证：
-
-1. 查看 Producer API 的 `intentId` 状态流转（`pending -> claimed -> executed/failed/expired`）。
-2. 查看链上 `txDigest` 与 `PaymentExecuted` 事件字段。
-3. 查看 `walrus_blob_id` 证据链接（或明确的 `fallback:` 降级标记）。
-4. 用超限输入验证合约的速率限制与总额度限制是否生效。
+默认 `executionRail: "auto"`：allowlisted stablecoin 且不需要 Guard 时走 native gasless；请求 `requiresGuard: true` 或携带 `walletId/sessionCapId` 时走 sponsored guard。
 
 ## Demo 视频
 
@@ -47,10 +45,10 @@ https://github.com/user-attachments/assets/cfff0f3e-d586-4c85-b3ef-c7aade79fb3c
 ## 文档导航
 
 - 架构说明：[`docs/architecture.md`](./docs/architecture.md)
-- 角色参与的全 E2E 流程图：[`docs/safeflow-e2e-role-flow_cn.md`](./docs/safeflow-e2e-role-flow_cn.md)
+- 多角色 E2E 流程：[`docs/safeflow-e2e-role-flow_cn.md`](./docs/safeflow-e2e-role-flow_cn.md)
 - E2E 运行手册：[`docs/safeflow-e2e-producer-consumer-runbook_cn.md`](./docs/safeflow-e2e-producer-consumer-runbook_cn.md)
 - 部署与配置手册：[`docs/safeflow-deploy-and-config-runbook_cn.md`](./docs/safeflow-deploy-and-config-runbook_cn.md)
-- OpenClaw / Agent Skill 安装指南：[`docs/safeflow-agent-skill-install_cn.md`](./docs/safeflow-agent-skill-install_cn.md)
+- Agent Skill 安装指南：[`docs/safeflow-agent-skill-install_cn.md`](./docs/safeflow-agent-skill-install_cn.md)
 
 ## 安装 SafeFlow Agent Skill
 
@@ -64,7 +62,7 @@ OpenClaw 以及其他兼容的 Agent 运行时可使用以下任一命令安装�
 npx skills add FWangZil/safe-flow-sui-skill
 ```
 
-或者：
+或：
 
 ```bash
 npx clawhub@latest install safe-flow-sui-skill
@@ -72,165 +70,139 @@ npx clawhub@latest install safe-flow-sui-skill
 
 ## 核心功能与技术栈
 
-- **智能体安全隔离钱包**: Sui Move 实现的 `AgentWallet` 与 `SessionCap` 机制。
-- **精确到秒的流支付限制**: Move 合约内基于 Sui Clock 的时间戳流速计算 (`max_spend_per_second`)。
-- **可审计的支付意图 (Walrus Integration)**: 真实上传 Walrus 并记录 `walrus_blob_id` 到链上事件，前端可按交易 digest 查询。
-- **Agent 本地执行**: 基于 `@mysten/sui.js` 和 Node.js 的 TypeScript 脚本，模拟 OpenClaw Agent 本地静默运行并按需支付。
-- **人类控制面板 (Human Dashboard)**: 基于 Next.js + Tailwind CSS + Sui dApp Kit 构建的前端，用于管理资金和授权。
+- **双 gasless rail**：自动判断 simple stablecoin transfer 与 guarded AgentPay flow。
+- **智能体安全隔离钱包**：Sui Move 实现 `AgentWallet<T>` 与 `SessionCap`。
+- **精确到秒的流支付限制**：Move 合约用 Sui Clock 校验 `max_spend_per_second`、总额与过期时间。
+- **Sponsor 稳定币手续费**：guarded flow 可通过 `execute_payment_with_fee<T>` 在同一稳定币中补偿 sponsor。
+- **Walrus 审计追踪**：Agent 上传推理证据，链上/Producer API 记录 `walrus_blob_id` 或 `fallback:<sha256>`。
+- **Postgres Producer API**：维护 merchant、checkout session、payment intent、agent allowance 与 sponsor attempt。
+- **Human Dashboard**：Next.js + Tailwind + Sui dApp Kit 的 operator setup、merchant checkout/status 与 audit trail 控制台。
 
 | 组件 | 技术 |
-|-----------|------------|
-| Blockchain | Sui (Testnet) |
-| Smart Contracts | Sui Move (2024.beta Edition) |
-| Agent Scripts | Node.js, TypeScript, `@mysten/sui.js` |
+|---|---|
+| Blockchain | Sui Testnet |
+| Smart Contracts | Sui Move |
+| Producer API | Node.js/Bun + Postgres |
+| Agent Scripts | TypeScript + `@mysten/sui` |
 | Frontend | Next.js 16, React, Tailwind CSS, `@mysten/dapp-kit` |
 
 ## 目录结构
 
-```
+```text
 .
 ├── agent_wallet/           # Sui Move 智能合约
-│   ├── sources/
-│   │   └── wallet.move     # 核心钱包与授权逻辑
-│   ├── tests/
-│   │   └── wallet_tests.move # 单元测试
-│   └── Move.toml
-├── agent_scripts/          # OpenClaw Agent 本地执行脚本与工具
-│   ├── index.ts            # Agent 密钥管理与 PTB 支付执行逻辑
-│   ├── create_intent.ts    # 快速创建测试 PaymentIntent
-│   ├── e2e_runner.ts       # 轮询/ACK/执行/回写结果
-│   ├── package.json
-│   └── tsconfig.json
-├── producer_api/           # PaymentIntent 生产者 API
-│   ├── server.mjs
-│   └── package.json
-├── web/                    # 供人类使用的主控制面板 (Next.js)
-│   ├── src/app/
-│   │   ├── page.tsx        # Dashboard UI
-│   │   ├── providers.tsx   # dApp Kit Providers
-│   │   └── layout.tsx
-│   ├── package.json
-│   └── tailwind.config.ts
-├── docs/                   # 项目相关文档
-│   ├── architecture.md     # 技术架构详解
-│   ├── safeflow-e2e-role-flow.md # 多角色全链路流程图
-│   ├── safeflow-e2e-producer-consumer-runbook.md # E2E 运行手册
-│   ├── safeflow-deploy-and-config-runbook.md # 部署配置手册
-│   └── hackathon_intro.md  # 黑客松提交介绍
-└── README.md               # 本文件
+├── agent_scripts/          # Agent 本地执行、intent 创建与 e2e runner
+├── producer_api/           # Postgres checkout/intent/sponsor API
+│   ├── migrations/
+│   ├── scripts/
+│   └── server.mjs
+├── sdk/                    # SafeFlow TS SDK
+├── web/                    # Demo console 与 public checkout page
+├── docs/                   # 项目文档
+└── safe-flow-sui-skill/    # 可发布/同步的 Agent skill
 ```
 
-## 安装与运行步骤
+## 运行步骤
 
 ### 1. 部署 Sui Move 合约
 
 ```bash
 cd agent_wallet
-
-# 构建合约
 sui move build
-
-# 运行测试
-sui move test
-
-# 发布到测试网 (请确保你的 sui client 环境已经配置好 testnet 并有测试币)
-sui client publish --gas-budget 100000000
+sui move test --build-env testnet
+sui client publish --gas-budget 100000000 --json
 ```
 
-部署成功后，请记录下 `Package ID`。
+记录发布得到的 `PACKAGE_ID`。
 
-### 2. 运行 Agent 脚本
-
-```bash
-cd agent_scripts
-
-# 安装依赖
-bun install
-
-# 指定刚部署得到的 Package ID（并配置 Walrus testnet）
-export PACKAGE_ID=<YOUR_PACKAGE_ID>
-export WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
-export WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
-export WALRUS_EPOCHS=5
-export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
-
-# 运行 Agent 脚本 (它会自动生成/读取本地 Agent 私钥并打印地址)
-npx tsx index.ts
-```
-
-记录下控制台打印出的 **Agent Address**。
-
-*(在实际应用中，让 Human Dashboard 给该地址授予 `SessionCap` 后，再在脚本里填入 `walletId/sessionCapId` 来执行真实支付。)*
-
-### 3. 运行 Producer API（支付意图生产者）
+### 2. 运行 Producer API
 
 ```bash
 cd producer_api
-
-export PRODUCER_SIGNING_SECRET=dev-secret-change-me
-# export PRODUCER_API_KEY=<可选写入密钥>
-
-node server.mjs
-```
-
-### 4. 创建 Intent + 运行 Agent E2E Runner
-
-```bash
-cd agent_scripts
-
-export PRODUCER_API_BASE_URL=http://localhost:8787
-export PRODUCER_SIGNING_SECRET=dev-secret-change-me
-# export PRODUCER_API_KEY=<可选写入密钥>
-
-# 创建测试意图
-npx tsx create_intent.ts \
-  --agent-address <AGENT_ADDRESS> \
-  --wallet-id <WALLET_ID> \
-  --session-cap-id <SESSION_CAP_ID> \
-  --recipient <RECIPIENT_ADDRESS> \
-  --amount-mist 1000000 \
-  --reason "demo e2e payment"
-
-# 启动轮询执行器
-npx tsx e2e_runner.ts --poll-ms 3000
-```
-
-### 5. 运行 Human Dashboard (前端)
-
-```bash
-cd web
-
-# 安装依赖
 bun install
 
-# 指定刚部署得到的 Package ID，供前端调用 Move 合约
-export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
-export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
-export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
-export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/safeflow
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export PACKAGE_ID=<YOUR_PACKAGE_ID>
+export SPONSOR_SECRET_KEY=<SPONSOR_SUI_PRIVATE_KEY>
+export SPONSOR_FEE_BPS=100
+export SPONSOR_MIN_FEE_ATOMIC=0
+export SPONSOR_FEE_RECIPIENT=<SPONSOR_STABLECOIN_FEE_ADDRESS>
+export NATIVE_GASLESS_COIN_TYPES=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export DEFAULT_CURRENCY_SYMBOL=USDC
+export DEFAULT_CURRENCY_DECIMALS=6
+export DEMO_PAYOUT_ADDRESS=<MERCHANT_PAYOUT_ADDRESS>
+export DEMO_AGENT_ADDRESS=<AGENT_ADDRESS>
+export DEMO_WALLET_ID=<WALLET_ID_FOR_GUARDED_FLOW>
+export DEMO_SESSION_CAP_ID=<SESSION_CAP_ID_FOR_GUARDED_FLOW>
 
-# 运行开发服务器
+bun run migrate
+bun run seed:demo
 bun run dev
 ```
 
-打开浏览器访问 `http://localhost:3000`。连接你的 Sui 钱包，输入上一步生成的 Agent Address，点击按钮即可链上执行：
+`seed:demo` 会打印一次 merchant API key。创建 checkout session 时作为 `x-api-key` 使用。
 
-1. `create_wallet`
-2. `create_session_cap`
+### 3. 创建 Checkout Session 并运行 Agent
 
-随后你可以在前端的 **Walrus Evidence Lookup** 区块输入支付交易 digest，直接解析并打开 `walrus_blob_id` 对应的证据链接。
-你也可以在 **Producer Intent Observer** 区块输入 `intentId`，查看状态 (`pending/claimed/executed/failed`) 并关联 `txDigest` 与 `walrus_blob_id`。
-完整角色流程图见：[`docs/safeflow-e2e-role-flow.md`](./docs/safeflow-e2e-role-flow.md)。
+```bash
+curl -X POST http://localhost:8787/v1/checkout/sessions \
+  -H "content-type: application/json" \
+  -H "x-api-key: <MERCHANT_API_KEY>" \
+  -d '{
+    "merchantOrderId": "order-demo-001",
+    "executionRail": "auto",
+    "amountAtomic": 1000000,
+    "reason": "demo USDC checkout"
+  }'
+```
 
-## 适用场景 (Track 匹配)
+Guarded flow 加上：
 
-本项目极度契合 **Sui OpenClaw Hackathon** 的两大相关主题：
+```json
+{
+  "requiresGuard": true,
+  "walletId": "<WALLET_ID>",
+  "sessionCapId": "<SESSION_CAP_ID>"
+}
+```
 
-1. **Safety & Security (Track 1)**:
-   通过 Move 的 Object 能力和 Walrus 的去中心化存储，打造了一个**防注入、可追溯、防挤兑**的 Agent 隔离钱包。人类掌握绝对的资金控制权和审计权。
+运行 Agent：
 
-2. **Local God Mode (Track 2)**:
-   OpenClaw 智能体在本地机器上运行，利用分配到的 `SessionCap` 在后台无缝地为自己调用的云端大模型 API 或其他 Web3 服务进行流式付费，实现真正的 Local Autonomy (本地自治)。
+```bash
+cd agent_scripts
+bun install
+export PRODUCER_API_BASE_URL=http://localhost:8787
+export PRODUCER_SIGNING_SECRET=dev-secret-change-me
+export PACKAGE_ID=<YOUR_PACKAGE_ID>
+export DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export WALRUS_PUBLISHER_URL=https://publisher.walrus-testnet.walrus.space
+export WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+export WALRUS_DEGRADE_ON_UPLOAD_FAILURE=true
+
+bunx tsx e2e_runner.ts --poll-ms 3000
+```
+
+### 4. 运行 Web 控制台
+
+```bash
+cd web
+bun install
+export NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
+export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
+export NEXT_PUBLIC_DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
+bun run dev
+```
+
+打开 `http://localhost:3000`。控制台可创建 merchant checkout、查看 public checkout 页面、跟踪 session 状态，并在 audit trail 中查看 `txDigest` 与 Walrus evidence。
+
+## Track 匹配
+
+1. **Safety & Security**：`SessionCap`、Move Object capability、Walrus evidence 与 Postgres intent 状态机共同限制 Agent 越权与提示词注入风险。
+2. **Local God Mode**：OpenClaw Agent 在本地运行，自动处理 checkout intent；简单交易无需 Agent SUI gas，复杂交易由 sponsor 支付执行 gas。
 
 ## 许可证
 

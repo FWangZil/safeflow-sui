@@ -10,6 +10,10 @@
     "module": "nodenext",
     "target": "esnext",
     "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@safeflow/sui-sdk": ["../sdk/dist/index.d.ts"]
+    },
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
@@ -40,5 +44,7 @@
     "noUncheckedSideEffectImports": true,
     "moduleDetection": "force",
     "skipLibCheck": true,
-  }
+  },
+  "include": ["*.ts"],
+  "exclude": ["node_modules", "dist"]
 }
