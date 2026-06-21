@@ -124,13 +124,13 @@ The Move contract is not a black box and depends only on the official Sui
 framework (no third-party Move libraries). Source: [`agent_wallet/`](../agent_wallet)
 (`agent_wallet::wallet`), buildable with `sui move build --build-env testnet`.
 
-Deployed package: `PACKAGE_ID=0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191` (testnet).
+Deployed package: `PACKAGE_ID=0xd3977766a8a8f3213c95455a2deff77d6cd271b6b666c10763a0362f1f5e4c09` (testnet).
+Published from git commit `a95460abad2b02877cfbd3b186038108494bba20` with Sui CLI `1.73.1-homebrew`.
+Publish transaction digest: `97AFR6cpfCvs2yS1sFBkRPSwEza7saDXXfYu3hrx8Z5a`.
 
-> ⚠️ **Known source/deployment drift.** The in-repo source is *ahead* of the
-> deployed `0xcc76…` package: source defines `execute_payment_with_fee` /
-> `SponsorFeePaid`, but the deployed package exposes only `execute_payment`
-> (verified via `sui_getNormalizedMoveModule`). `PaymentExecuted` event fields
-> match exactly. Consequence: the default flow (`SPONSOR_FEE_BPS=0`, which uses
-> `execute_payment`) works against `0xcc76…`; enabling an on-chain sponsor fee
-> (`SPONSOR_FEE_BPS>0`, which calls `execute_payment_with_fee`) requires
-> **republishing `agent_wallet` and updating `PACKAGE_ID`** everywhere.
+> ✅ **Source/deployment drift resolved.** `agent_wallet` was republished to
+> testnet; the deployed package now exposes `execute_payment_with_fee` /
+> `SponsorFeePaid` in addition to `execute_payment` (verified via
+> `sui_getNormalizedMoveModule`). Both the default flow (`SPONSOR_FEE_BPS=0`)
+> and the on-chain sponsor-fee flow (`SPONSOR_FEE_BPS>0`) run against the
+> deployed package.

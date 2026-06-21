@@ -14,7 +14,7 @@ Use this flow for realistic demo operation where owner controls guarded provisio
 ```bash
 cd .claude/skills/safe-flow-sui-skill/scripts
 ./bootstrap_owner_handoff.sh \
-  --package-id 0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191 \
+  --package-id 0xd3977766a8a8f3213c95455a2deff77d6cd271b6b666c10763a0362f1f5e4c09 \
   --portal-url https://dash.safeflow.space
 ```
 

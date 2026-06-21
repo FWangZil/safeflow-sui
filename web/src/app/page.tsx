@@ -14,6 +14,7 @@ import {
     ShieldCheck,
 } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
 const DEFAULT_COIN_TYPE = process.env.NEXT_PUBLIC_DEFAULT_COIN_TYPE
@@ -22,6 +23,10 @@ const CLOCK_OBJECT_ID = '0x6';
 const DEFAULT_WALRUS_AGGREGATOR_URL = process.env.NEXT_PUBLIC_WALRUS_AGGREGATOR_URL || 'https://aggregator.walrus-testnet.walrus.space';
 const DEFAULT_WALRUS_SITE_SUFFIX = process.env.NEXT_PUBLIC_WALRUS_SITE_SUFFIX || '.walrus.site';
 const DEFAULT_PRODUCER_API_BASE_URL = process.env.NEXT_PUBLIC_PRODUCER_API_BASE_URL || 'http://localhost:8787';
+const DEFAULT_DEMO_AGENT_ADDRESS = process.env.NEXT_PUBLIC_DEMO_AGENT_ADDRESS ?? '';
+const DEFAULT_DEMO_WALLET_ID = process.env.NEXT_PUBLIC_DEMO_WALLET_ID ?? '';
+const DEFAULT_DEMO_SESSION_CAP_ID = process.env.NEXT_PUBLIC_DEMO_SESSION_CAP_ID ?? '';
+const DEFAULT_DEMO_MERCHANT_API_KEY = process.env.NEXT_PUBLIC_DEMO_MERCHANT_API_KEY ?? '';
 type CheckoutRailSelection = 'auto' | 'sponsored_guard' | 'native_gasless';
 
 interface BlobLinks {
@@ -143,15 +148,15 @@ export default function Home() {
     const suiClient = useSuiClient();
     const { mutateAsync: signAndExecuteTransaction } = useSignAndExecuteTransaction();
 
-    const [agentAddress, setAgentAddress] = useState('');
+    const [agentAddress, setAgentAddress] = useState(DEFAULT_DEMO_AGENT_ADDRESS);
     const [coinType, setCoinType] = useState(DEFAULT_COIN_TYPE);
     const [maxSpendPerSecond, setMaxSpendPerSecond] = useState('1000000');
     const [maxTotalSpend, setMaxTotalSpend] = useState('10000000');
     const [operatorStatus, setOperatorStatus] = useState('');
-    const [walletId, setWalletId] = useState('');
-    const [sessionCapId, setSessionCapId] = useState('');
+    const [walletId, setWalletId] = useState(DEFAULT_DEMO_WALLET_ID);
+    const [sessionCapId, setSessionCapId] = useState(DEFAULT_DEMO_SESSION_CAP_ID);
 
-    const [merchantApiKey, setMerchantApiKey] = useState('');
+    const [merchantApiKey, setMerchantApiKey] = useState(DEFAULT_DEMO_MERCHANT_API_KEY);
     const [checkoutOrderId, setCheckoutOrderId] = useState(`order_${Date.now()}`);
     const [checkoutAmount, setCheckoutAmount] = useState('1250000');
     const [checkoutRail, setCheckoutRail] = useState<CheckoutRailSelection>('auto');
@@ -344,12 +349,18 @@ export default function Home() {
                             <p className="text-xs text-slate-500">AgentPay Guard for stablecoin merchant settlement</p>
                         </div>
                     </div>
-                    <ConnectButton />
+                    <div className="flex items-center gap-3">
+                        <Link className="secondary-button hidden sm:inline-flex" href="/admin">Admin</Link>
+                        <ConnectButton />
+                    </div>
                 </div>
             </header>
 
             <section className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[1fr_1.15fr_1fr]">
                 <Panel icon={<ShieldCheck className="h-5 w-5" />} title="Operator Setup" description="Provision a coin-specific wallet and SessionCap. Sponsor gas is used only later by the agent payment executor.">
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-900">
+                        Demo defaults are loaded from <span className="font-mono text-xs">web/.env.local</span>. Use Admin when you need to create or fund a fresh guarded wallet.
+                    </div>
                     <Field label="Agent address">
                         <input value={agentAddress} onChange={(event) => setAgentAddress(event.target.value)} className="input" placeholder="0x..." />
                     </Field>
@@ -373,6 +384,11 @@ export default function Home() {
                 </Panel>
 
                 <Panel icon={<ReceiptText className="h-5 w-5" />} title="Merchant Checkout" description="Create a checkout session backed by a signed intent. Simple transfers use native gasless stablecoins; guarded payments use sponsor gas.">
+                    {DEFAULT_DEMO_MERCHANT_API_KEY && (
+                        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-900">
+                            Local demo merchant key is prefilled from <span className="font-mono text-xs">NEXT_PUBLIC_DEMO_MERCHANT_API_KEY</span>.
+                        </div>
+                    )}
                     <Field label="Merchant API key">
                         <input value={merchantApiKey} onChange={(event) => setMerchantApiKey(event.target.value)} className="input" placeholder="sf_demo_..." />
                     </Field>

@@ -1,0 +1,79 @@
+name: safeflow
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-safeflow}
+      POSTGRES_USER: ${POSTGRES_USER:-safeflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-safeflow_change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  producer-api:
+    image: ${SAFEFLOW_PRODUCER_API_IMAGE:-safeflow/producer-api:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: producer_api
+    restart: unless-stopped
+    env_file:
+      - ./deploy/producer_api.env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-safeflow}:${POSTGRES_PASSWORD:-safeflow_change_me}@postgres:5432/${POSTGRES_DB:-safeflow}
+      PRODUCER_API_PORT: 8787
+    command: ["sh", "-c", "node scripts/migrate.mjs && node server.mjs"]
+    ports:
+      - "${PRODUCER_API_HOST_PORT:-8787}:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  agent-runner:
+    image: ${SAFEFLOW_AGENT_RUNNER_IMAGE:-safeflow/agent-runner:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: agent_runner
+    restart: unless-stopped
+    env_file:
+      - ./deploy/agent_runner.env
+    environment:
+      PRODUCER_API_BASE_URL: http://producer-api:8787
+    volumes:
+      - ./deploy/agent_key.json:/app/agent_scripts/.agent_key.json:ro
+    depends_on:
+      producer-api:
+        condition: service_healthy
+
+  producer-api-seed-demo:
+    image: ${SAFEFLOW_PRODUCER_API_IMAGE:-safeflow/producer-api:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: producer_api
+    profiles:
+      - seed
+    env_file:
+      - ./deploy/producer_api.env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-safeflow}:${POSTGRES_PASSWORD:-safeflow_change_me}@postgres:5432/${POSTGRES_DB:-safeflow}
+    command: ["node", "scripts/seed_demo.mjs"]
+    depends_on:
+      producer-api:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  postgres_data:

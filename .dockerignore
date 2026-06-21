@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.next
+**/node_modules
+**/.env
+**/.env.*
+agent_scripts/.agent_key.json
+producer_api/data
+web
+agent_wallet
+docs
+safe-flow-sui-skill
+*.log

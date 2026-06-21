@@ -6,7 +6,7 @@ CONFIG_FILE="$SCRIPT_DIR/.safeflow-config.json"
 AGENT_ADDRESS_FILE="$SCRIPT_DIR/.agent-address.txt"
 ENV_FILE="$SCRIPT_DIR/.safeflow-owner.env"
 
-DEFAULT_PACKAGE_ID="0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191"
+DEFAULT_PACKAGE_ID="0xd3977766a8a8f3213c95455a2deff77d6cd271b6b666c10763a0362f1f5e4c09"
 DEFAULT_NETWORK="testnet"
 DEFAULT_PRODUCER_BASE_URL="https://producer.safeflow.space"
 DEFAULT_PUBLISH_API_URL="https://producer.safeflow.space"

@@ -1,0 +1,15 @@
+{
+  "network": "testnet",
+  "chainId": "4c78adac",
+  "packageId": "0xd3977766a8a8f3213c95455a2deff77d6cd271b6b666c10763a0362f1f5e4c09",
+  "publishDigest": "97AFR6cpfCvs2yS1sFBkRPSwEza7saDXXfYu3hrx8Z5a",
+  "upgradeCap": "0xaf0d3a4ca76f8bd097f1ffe8f4108035f2b07f1e6fb3deadedda8973e0caed41",
+  "publishedAt": "2026-06-21T18:15:05+08:00",
+  "publishedBy": "0x3207352ab5da4b92ce652fdc198169c242962bf23c9112a6cfbf793b7f50ec8a",
+  "gitCommit": "a95460abad2b02877cfbd3b186038108494bba20",
+  "suiCliVersion": "1.73.1-homebrew",
+  "sourcePath": "agent_wallet",
+  "modules": [
+    "agent_wallet::wallet"
+  ]
+}

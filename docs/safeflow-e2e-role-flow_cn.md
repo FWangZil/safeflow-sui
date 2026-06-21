@@ -25,6 +25,22 @@
 - **Web Console**
   - 展示 operator setup、merchant checkout/status、public checkout 和 audit trail。
 
+## 页面引导覆盖范围
+
+启动 `web` 与 `producer_api` 后，录屏主要从这几个页面走：
+
+- `/admin`
+  - 自动读取 `web/.env.local` 中的 `NEXT_PUBLIC_PACKAGE_ID`、`NEXT_PUBLIC_DEFAULT_COIN_TYPE`、`NEXT_PUBLIC_DEMO_PAYOUT_ADDRESS`、`NEXT_PUBLIC_DEMO_AGENT_ADDRESS`、`NEXT_PUBLIC_DEMO_WALLET_ID` 与 `NEXT_PUBLIC_DEMO_SESSION_CAP_ID`。
+  - 引导创建 `AgentWallet<T>` / `SessionCap`、向 guarded wallet deposit 测试 USDC、复制 `producer_api/.env` demo binding 片段，并提示运行 `npm run seed:demo`。
+  - 展示 Agent Runner 本地命令；Agent 私钥仍只从 `agent_scripts/.agent_key.json` 读取，不进入浏览器。
+- `/`
+  - 自动填入 demo agent / guarded object 信息；如果设置了 `NEXT_PUBLIC_DEMO_MERCHANT_API_KEY`，Merchant API key 也会自动填入。
+  - 用于创建 checkout session、打开 checkout URL、查询 intent 与 audit trail。
+- `/checkout?sessionId=...`
+  - 每 3 秒轮询 Producer API，展示 session 状态、最终 `txDigest` 与 Walrus evidence。
+
+完整执行仍需要三个本地进程：Producer API、Web Console、Agent Runner。只启动 `web/api` 时，页面能完成 setup、创建订单与状态展示，但不会自动 ACK/执行 intent。
+
 ## OpenClaw Agent 视角
 
 1. 轮询拉取分配给 `agentAddress` 的 intent。

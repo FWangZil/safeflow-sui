@@ -209,10 +209,83 @@ export NEXT_PUBLIC_PRODUCER_API_BASE_URL=http://localhost:8787
 export NEXT_PUBLIC_DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
 export NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
 export NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
+export NEXT_PUBLIC_DEMO_AGENT_ADDRESS=<AGENT_ADDRESS>
+export NEXT_PUBLIC_DEMO_WALLET_ID=<WALLET_ID_FOR_GUARDED_FLOW>
+export NEXT_PUBLIC_DEMO_SESSION_CAP_ID=<SESSION_CAP_ID_FOR_GUARDED_FLOW>
+export NEXT_PUBLIC_DEMO_MERCHANT_API_KEY=<MERCHANT_API_KEY_FROM_SEED_DEMO>
 bun run dev
 ```
 
-打开 `http://localhost:3000`。控制台可创建 merchant checkout、查看 public checkout 页面、跟踪 session 状态，并在 audit trail 中查看 `txDigest` 与 Walrus evidence。
+打开 `http://localhost:3000`。控制台可自动填入本地 demo 参数、创建 merchant checkout、查看 public checkout 页面、跟踪 session 状态，并在 audit trail 中查看 `txDigest` 与 Walrus evidence。`http://localhost:3000/admin` 会引导 guarded wallet funding、Producer seed 片段和 Agent Runner 命令。
+
+## Docker 镜像与服务器部署
+
+后端服务可以用仓库根目录的 `Dockerfile` 构建两个镜像：
+
+- `producer_api` target：运行 Producer API，并在容器启动前执行数据库 migration。
+- `agent_runner` target：运行 `agent_scripts/e2e_runner.ts`，从挂载的 `agent_scripts/.agent_key.json` 等价文件读取 Agent 私钥。
+
+GitHub Actions workflow 位于 `.github/workflows/docker-images.yml`。推送到 `main`、推送 `v*` tag 或手动触发时，会构建并推送：
+
+- `ghcr.io/<owner>/<repo>-producer-api:<tag>`
+- `ghcr.io/<owner>/<repo>-agent-runner:<tag>`
+
+PR 只构建，不推送镜像。
+
+服务器上准备配置：
+
+```bash
+cp deploy/compose.env.example deploy/compose.env
+cp deploy/producer_api.env.example deploy/producer_api.env
+cp deploy/agent_runner.env.example deploy/agent_runner.env
+cp agent_scripts/.agent_key.json deploy/agent_key.json
+```
+
+编辑这几个文件：
+
+- `deploy/compose.env`：设置 GHCR 镜像名、tag、Postgres 密码、API 对外端口。
+- `deploy/producer_api.env`：设置 `PACKAGE_ID`、`PRODUCER_SIGNING_SECRET`、`SPONSOR_SECRET_KEY`、demo merchant/allowance 绑定、以及 `APP_URL=<Cloudflare 前端 URL>`。
+- `deploy/agent_runner.env`：设置同一个 `PACKAGE_ID` 与 `PRODUCER_SIGNING_SECRET`，并保留 `PRODUCER_API_BASE_URL=http://producer-api:8787`。
+- `deploy/agent_key.json`：Agent 私钥文件，只在服务器挂载，不能提交到 git。
+
+启动服务：
+
+```bash
+# 拉取 GHCR 镜像；如果要在服务器本地构建，可改用 docker compose build。
+docker compose --env-file deploy/compose.env pull producer-api agent-runner
+
+# 启动 Postgres + Producer API。API 会自动执行 migrations。
+docker compose --env-file deploy/compose.env up -d postgres producer-api
+
+# 首次或重置 demo binding 后 seed merchant/allowance。
+docker compose --env-file deploy/compose.env --profile seed run --rm producer-api-seed-demo
+
+# 启动 Agent Runner。
+docker compose --env-file deploy/compose.env up -d agent-runner
+```
+
+常用运维命令：
+
+```bash
+docker compose --env-file deploy/compose.env logs -f producer-api
+docker compose --env-file deploy/compose.env logs -f agent-runner
+docker compose --env-file deploy/compose.env ps
+docker compose --env-file deploy/compose.env down
+```
+
+前端部署到 Cloudflare Pages/Workers 时，只需要把构建变量指向服务器 API：
+
+```bash
+NEXT_PUBLIC_PACKAGE_ID=<YOUR_PACKAGE_ID>
+NEXT_PUBLIC_PRODUCER_API_BASE_URL=https://api.your-domain.example
+NEXT_PUBLIC_DEFAULT_COIN_TYPE=0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC
+NEXT_PUBLIC_WALRUS_AGGREGATOR_URL=https://aggregator.walrus-testnet.walrus.space
+NEXT_PUBLIC_WALRUS_SITE_SUFFIX=.walrus.site
+NEXT_PUBLIC_DEMO_AGENT_ADDRESS=<AGENT_ADDRESS>
+NEXT_PUBLIC_DEMO_WALLET_ID=<WALLET_ID_FOR_GUARDED_FLOW>
+NEXT_PUBLIC_DEMO_SESSION_CAP_ID=<SESSION_CAP_ID_FOR_GUARDED_FLOW>
+NEXT_PUBLIC_DEMO_MERCHANT_API_KEY=<MERCHANT_API_KEY_FROM_SEED_DEMO>
+```
 
 ## Track 匹配
 

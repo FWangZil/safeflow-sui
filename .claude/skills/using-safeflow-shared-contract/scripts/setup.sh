@@ -23,7 +23,7 @@ AGENT_ADDRESS_FILE="$SCRIPT_DIR/.agent-address.txt"
 # =============================================================================
 # TODO: Fill in after deployment
 # =============================================================================
-SAFEFLOW_PACKAGE_ID="0xcc76747b518ea5d07255a26141fb5e0b81fcdd0dc1cc578a83f88adc003a6191"
+SAFEFLOW_PACKAGE_ID="0xd3977766a8a8f3213c95455a2deff77d6cd271b6b666c10763a0362f1f5e4c09"
 SAFEFLOW_NETWORK="testnet"
 # =============================================================================
 

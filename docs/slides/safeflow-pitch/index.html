@@ -1362,7 +1362,7 @@
     </div>
     <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta"><span class="en">SYSTEM OVERVIEW</span><span class="zh">系统总览</span></div>
-      <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh);max-width:22ch"><span class="en">One orchestration layer, two settlement rails, one audit channel.</span><span class="zh">一层编排、两条结算通道、一条审计。</span></h2>
+      <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh)"><span class="en">One orchestration layer, two settlement rails, one audit channel.</span><span class="zh">一层编排、两条结算通道、一条审计。</span></h2>
     </div>
     <div class="stack-row" style="margin-top:4vh">
       <div class="stack-block b-grey">
@@ -1397,7 +1397,7 @@
       <div class="l"><span class="en">AgentPay Guard · 05 / 15</span><span class="zh">AgentPay 守卫 · 05 / 15</span></div>
       <div class="r"><span class="en">SESSIONCAP</span><span class="zh">SESSIONCAP</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh;max-width:30ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta"><span class="en">MOVE-ENFORCED LIMITS</span><span class="zh">合约强制限额</span></div>
       <h2 class="h-xl-zh" style="font-size:min(4.6vw,8vh)"><span class="en">Policy lives on-chain — <span style="font-style:italic;font-weight:300">not</span> in the agent.</span><span class="zh">策略在链上——<span style="font-style:italic;font-weight:300">不</span>在 Agent 手里。</span></h2>
     </div>
@@ -1445,7 +1445,7 @@
       <div class="l"><span class="en">Agent Runtime · 06 / 15</span><span class="zh">Agent 运行时 · 06 / 15</span></div>
       <div class="r"><span class="en">EXECUTION LOOP</span><span class="zh">执行循环</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh;max-width:34ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta"><span class="en">OPENCLAW AGENT POV</span><span class="zh">OPENCLAW AGENT 视角</span></div>
       <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh)"><span class="en">A controlled checkout loop — <span style="font-style:italic;font-weight:300">not</span> a transfer bot.</span><span class="zh">受控的结算循环——<span style="font-style:italic;font-weight:300">不是</span>转账脚本。</span></h2>
     </div>
@@ -1457,14 +1457,14 @@
         <div style="display:grid;grid-template-columns:auto 1fr;gap:1.4vw;align-items:baseline;border-top:1px solid rgba(255,255,255,.18);padding-top:1.2vh"><span style="font-family:var(--mono);font-size:max(14px,1vw);opacity:.6">04</span><div><div style="font-family:var(--sans);font-weight:600;font-size:max(16px,1.5vw)"><span class="en">Execute rail</span><span class="zh">执行通道</span></div><div class="body-sm" style="opacity:.75"><span class="en">native_gasless | sponsored_guard</span><span class="zh">native_gasless | sponsored_guard</span></div></div></div>
         <div style="display:grid;grid-template-columns:auto 1fr;gap:1.4vw;align-items:baseline;border-top:1px solid rgba(255,255,255,.18);padding-top:1.2vh"><span style="font-family:var(--mono);font-size:max(14px,1vw);opacity:.6">05</span><div><div style="font-family:var(--sans);font-weight:600;font-size:max(16px,1.5vw)"><span class="en">Report result</span><span class="zh">回写结果</span></div><div class="body-sm" style="opacity:.75"><span class="en">executed/failed/expired · txDigest + blob</span><span class="zh">executed/failed/expired · txDigest + blob</span></div></div></div>
       </div>
-      <svg viewBox="0 0 400 400" style="width:100%;height:100%;max-height:58vh;display:block" aria-hidden="true">
+      <svg viewBox="0 0 400 400" style="width:min(42vw,52vh);height:min(42vw,52vh);display:block;justify-self:center;align-self:center" aria-hidden="true">
         <defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
         <circle cx="200" cy="200" r="150" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 6"/>
-        <circle cx="200" cy="50" r="11" fill="var(--accent)"/>
-        <circle cx="342.7" cy="153.6" r="11" fill="var(--accent)"/>
-        <circle cx="288.2" cy="321.4" r="11" fill="var(--accent)"/>
-        <circle cx="111.8" cy="321.4" r="11" fill="var(--accent)"/>
-        <circle cx="57.3" cy="153.6" r="11" fill="var(--accent)"/>
+        <circle cx="200" cy="50" r="11" style="fill:var(--accent)"/>
+        <circle cx="342.7" cy="153.6" r="11" style="fill:var(--accent)"/>
+        <circle cx="288.2" cy="321.4" r="11" style="fill:var(--accent)"/>
+        <circle cx="111.8" cy="321.4" r="11" style="fill:var(--accent)"/>
+        <circle cx="57.3" cy="153.6" r="11" style="fill:var(--accent)"/>
         <path d="M246.4,57.3 A150,150 0 0 1 321.4,111.8" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#arr)" opacity=".7"/>
         <path d="M350,200 A150,150 0 0 1 321.4,288.2" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#arr)" opacity=".7"/>
         <path d="M246.4,342.7 A150,150 0 0 1 153.6,342.7" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#arr)" opacity=".7"/>
@@ -1483,7 +1483,7 @@
       <div class="l"><span class="en">Audit Trail · 07 / 15</span><span class="zh">审计追踪 · 07 / 15</span></div>
       <div class="r"><span class="en">WALRUS</span><span class="zh">WALRUS</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.6vh;max-width:24ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.6vh">
       <div class="t-cat accent" style="color:var(--accent)"><span class="en">WALRUS EVIDENCE</span><span class="zh">WALRUS 证据</span></div>
       <div><h2 style="font-family:var(--sans),var(--sans-zh);font-weight:200;font-size:min(6vw,10.6vh);line-height:1;letter-spacing:-.03em"><span class="en">Every payment leaves a <span style="font-style:italic;font-weight:300">reason.</span></span><span class="zh">每一笔支付都留下<span style="font-style:italic;font-weight:300">理由</span>。</span></h2></div>
     </div>
@@ -1558,7 +1558,7 @@
       <div class="l"><span class="en">Security Model · 09 / 15</span><span class="zh">安全模型 · 09 / 15</span></div>
       <div class="r"><span class="en">FOUR PILLARS</span><span class="zh">四大支柱</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.6vh;max-width:24ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.6vh">
       <div style="width:80px;height:3px;background:var(--accent)"></div>
       <div>
         <div class="t-meta" style="color:rgba(255,255,255,.6);margin-bottom:1vh"><span class="en">SECURITY MODEL</span><span class="zh">安全模型</span></div>
@@ -1597,7 +1597,7 @@
       <div class="l"><span class="en">Why Sui · 10 / 15</span><span class="zh">为什么是 Sui · 10 / 15</span></div>
       <div class="r"><span class="en">THREE FORCES</span><span class="zh">三股力量</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh;max-width:30ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta"><span class="en">WHY SUI &amp; MOVE</span><span class="zh">为什么是 SUI 与 MOVE</span></div>
       <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh)"><span class="en">Capability objects, gasless transfers, decentralized evidence.</span><span class="zh">能力对象、无 Gas 转账、去中心化证据。</span></h2>
     </div>
@@ -1633,7 +1633,7 @@
       <div class="l"><span class="en">Hackathon Scope · 11 / 15</span><span class="zh">黑客松范围 · 11 / 15</span></div>
       <div class="r"><span class="en">WHAT'S NEW</span><span class="zh">新增功能</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh;max-width:34ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta"><span class="en">SUIOVERFLOW 2026 · NEW WORK</span><span class="zh">SUIOVERFLOW 2026 · 新工作</span></div>
       <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh)"><span class="en">From SessionCap demo to <span style="font-style:italic;font-weight:300">checkout product.</span></span><span class="zh">从 SessionCap 演示到<span style="font-style:italic;font-weight:300">结算产品</span>。</span></h2>
     </div>
@@ -1655,7 +1655,7 @@
       <div class="l"><span class="en">Implementation · 12 / 15</span><span class="zh">实现状态 · 12 / 15</span></div>
       <div class="r"><span class="en">BUILT</span><span class="zh">已构建</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh;max-width:32ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta" style="color:rgba(255,255,255,.6)"><span class="en">SHIPPED COMPONENTS</span><span class="zh">已交付组件</span></div>
       <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh);color:#fff"><span class="en">Runnable end-to-end on Sui testnet.</span><span class="zh">在 Sui 测试网端到端可运行。</span></h2>
     </div>
@@ -1686,7 +1686,7 @@
       <div class="l"><span class="en">Demo · 13 / 15</span><span class="zh">演示 · 13 / 15</span></div>
       <div class="r"><span class="en">STORYLINE</span><span class="zh">流程</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh;max-width:34ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta"><span class="en">3–4 MINUTE STORY</span><span class="zh">3–4 分钟流程</span></div>
       <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh)"><span class="en">Allowed autonomy, denied abuse — <span style="font-style:italic;font-weight:300">live.</span></span><span class="zh">允许自治，拒绝滥用——<span style="font-style:italic;font-weight:300">现场演示</span>。</span></h2>
     </div>
@@ -1712,7 +1712,7 @@
       <div class="l"><span class="en">Track Fit · 14 / 15</span><span class="zh">赛道契合 · 14 / 15</span></div>
       <div class="r"><span class="en">WHY NOW</span><span class="zh">正当其时</span></div>
     </div>
-    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh;max-width:34ch">
+    <div data-anim="line" style="display:flex;flex-direction:column;gap:1.2vh">
       <div class="t-meta"><span class="en">SUIOVERFLOW 2026</span><span class="zh">SUIOVERFLOW 2026</span></div>
       <h2 class="h-xl-zh" style="font-size:min(4.4vw,7.6vh)"><span class="en">Two tracks, one bounded-autonomy thesis.</span><span class="zh">两条赛道，一个有界自治的主张。</span></h2>
     </div>
