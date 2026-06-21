@@ -248,21 +248,21 @@ cp agent_scripts/.agent_key.json deploy/agent_key.json
 - `deploy/agent_runner.env`：设置同一个 `PACKAGE_ID` 与 `PRODUCER_SIGNING_SECRET`，并保留 `PRODUCER_API_BASE_URL=http://producer-api:8787`。
 - `deploy/agent_key.json`：Agent 私钥文件，只在服务器挂载，不能提交到 git。
 
-启动服务：
+启动后端 stack：
 
 ```bash
 # 拉取 GHCR 镜像；如果要在服务器本地构建，可改用 docker compose build。
 docker compose --env-file deploy/compose.env pull producer-api agent-runner
 
-# 启动 Postgres + Producer API。API 会自动执行 migrations。
-docker compose --env-file deploy/compose.env up -d postgres producer-api
+# 一次性启动 Postgres + Producer API + Agent Runner。
+# Producer API 会自动执行 migrations；Agent Runner 会等 API healthcheck 通过后再启动。
+docker compose --env-file deploy/compose.env up -d
 
 # 首次或重置 demo binding 后 seed merchant/allowance。
 docker compose --env-file deploy/compose.env --profile seed run --rm producer-api-seed-demo
-
-# 启动 Agent Runner。
-docker compose --env-file deploy/compose.env up -d agent-runner
 ```
+
+这里的“融合”发生在编排层：`producer-api` 和 `agent-runner` 仍是两个容器。不要把 Agent Runner 嵌入 Producer API 进程里，否则 API 重启、runner 重启、agent 私钥挂载、日志排查和横向扩容都会变得更难控制。若只想调试 API，可以临时只启动 `docker compose --env-file deploy/compose.env up -d postgres producer-api`。
 
 常用运维命令：
 
