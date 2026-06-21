@@ -10,3 +10,4 @@ deploy/*.env
 deploy/agent_key.json
 .specstory/
 .idea/
+.DS_Store
